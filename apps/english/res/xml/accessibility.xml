@@ -3,4 +3,5 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
+    android:settingsActivity="local.mytv.english.SettingsActivity"
     android:notificationTimeout="100" />

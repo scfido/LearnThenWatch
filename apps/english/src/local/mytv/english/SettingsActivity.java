@@ -37,7 +37,7 @@ public final class SettingsActivity extends Activity {
     private final Handler handler = new Handler();
     private int renderVersion;
     private long confirmVersion;
-    private TextView balanceLabel, dailyLabel, statusLabel, pinDots, pinMessage;
+    private TextView balanceLabel, dailyLabel, statusLabel, monitorAdvice, pinDots, pinMessage;
     private boolean parentAuthenticated, confirmingPin, pinSetup, pinBusy;
     private String pendingPin, pinInput = "";
     private final Runnable tick = new Runnable() {
@@ -153,7 +153,7 @@ public final class SettingsActivity extends Activity {
         renderCurrent();
     }
     private static boolean protectedPage(String name) {
-        return "parent".equals(name) || "confirm".equals(name) || "unitpicker".equals(name) || "sources".equals(name) || "license".equals(name);
+        return "parent".equals(name) || "monitor".equals(name) || "confirm".equals(name) || "unitpicker".equals(name) || "sources".equals(name) || "license".equals(name);
     }
     private String section() {
         List<Screen> entries = navigation.entries();
@@ -167,7 +167,7 @@ public final class SettingsActivity extends Activity {
     private void renderCurrent() {
         if (repository == null) return;
         stopMedia(); renderVersion++; scroll = null; pageRoot = null; defaultFocus = null;
-        balanceLabel = null; dailyLabel = null; statusLabel = null; pinGrid = null;
+        balanceLabel = null; dailyLabel = null; statusLabel = null; monitorAdvice = null; pinGrid = null;
         targets.clear(); menu.clear(); menuByName.clear();
         Screen destination = navigation.current();
         if (protectedPage(destination.name) && !parentAuthenticated) {
@@ -184,6 +184,7 @@ public final class SettingsActivity extends Activity {
                 case "records": records(); break;
                 case "review": reviewList(); break;
                 case "parent": parent(); break;
+                case "monitor": monitor(); break;
                 case "pin": renderPin(destination.argument); break;
                 case "confirm": confirmAction(destination.argument); break;
                 case "unitpicker": unitPicker(); break;
@@ -291,12 +292,18 @@ public final class SettingsActivity extends Activity {
         statusLabel = TvTheme.text(this, "", 15, TvTheme.MUTED); TvTheme.add(content, statusLabel, 8); refreshHomeCounters();
     }
     private void refreshHomeCounters() {
-        if (repository == null || !"home".equals(pageName)) return;
+        if (repository == null) return;
         try {
-            StudyModels.Snapshot state = repository.snapshot();
-            if (balanceLabel != null) balanceLabel.setText(TvTheme.duration(state.balanceMs));
-            if (dailyLabel != null) dailyLabel.setText(TvTheme.minutes(state.dailyRemainingMs));
-            if (statusLabel != null) statusLabel.setText(!repository.hasPin() ? "请家长先设置 PIN" : LearningService.status());
+            if ("home".equals(pageName)) {
+                StudyModels.Snapshot state = repository.snapshot();
+                if (balanceLabel != null) balanceLabel.setText(TvTheme.duration(state.balanceMs));
+                if (dailyLabel != null) dailyLabel.setText(TvTheme.minutes(state.dailyRemainingMs));
+            }
+            if (statusLabel != null) {
+                MonitorStatus status = LearningService.monitorStatus(this, repository);
+                statusLabel.setText(status.message);
+                if (monitorAdvice != null) monitorAdvice.setText(monitorAdvice(status.kind));
+            }
         } catch (RuntimeException error) { if (statusLabel != null) statusLabel.setText("本机数据暂不可用，请联系家长"); }
     }
     private void startStudy(boolean demo) {
@@ -364,7 +371,7 @@ public final class SettingsActivity extends Activity {
     private void sectionTitle(String label) { TvTheme.add(content, TvTheme.title(this, label, 22), 20); }
     private void parent() {
         AppSettings s = repository.settings(); shell("家长配置", "确认键切换设置 · 每日上限即时生效");
-        TvTheme.add(content, TvTheme.text(this, LearningService.status(), 18, TvTheme.TEAL), 10);
+        statusLabel = TvTheme.text(this, "", 18, TvTheme.TEAL); TvTheme.add(content, statusLabel, 10); refreshHomeCounters();
         sectionTitle("观看规则");
         setting("parent:enabled", "观看管控", s.enabled ? "开启" : "关闭", v -> v.enabled = !v.enabled);
         setting("parent:tasks", "每轮主任务", s.taskCount + " 项", v -> v.taskCount = cycle(v.taskCount, new int[]{3, 5, 8, 10}));
@@ -378,13 +385,36 @@ public final class SettingsActivity extends Activity {
         setting("parent:volume", "发音音量", s.volume + "%", v -> v.volume = cycle(v.volume, new int[]{25, 50, 80, 100}));
         setting("parent:speak", "单词自动发音", s.autoSpeak ? "开启" : "关闭", v -> v.autoSpeak = !v.autoSpeak);
         setting("parent:hints", "中文辅助", s.chineseHints ? "开启" : "关闭", v -> v.chineseHints = !v.chineseHints);
-        sectionTitle("系统与记录"); action("parent:system", "电视系统设置  ›", this::openSystemSettings);
+        sectionTitle("系统与记录"); action("parent:monitor", "监控检查 · 开机恢复  ›", () -> go(new Screen("monitor")));
+        action("parent:system", "电视系统设置  ›", this::openSystemSettings);
         action("parent:demo", "体验演示  ›", () -> go(new Screen("study", "demo")));
         action("parent:records", "观看与学习记录  ›", () -> go(new Screen("records")));
         action("parent:sources", "课程与内容来源  ›", () -> go(new Screen("sources")));
         sectionTitle("PIN 与本机数据"); action("parent:pin", "修改家长 PIN  ›", () -> go(new Screen("pin", "change-old")));
         action("parent:defaults", "恢复默认配置  ›", () -> go(new Screen("confirm", "defaults")));
         action("parent:reset", "清除学习与观看记录  ›", () -> go(new Screen("confirm", "reset")));
+    }
+    private void monitor() {
+        shell("监控检查", "开机后在后台恢复，保留电视原画面");
+        LinearLayout card = TvTheme.card(this, TvTheme.WHITE);
+        statusLabel = TvTheme.title(this, "", 24); statusLabel.setTag("monitor:status"); card.addView(statusLabel);
+        monitorAdvice = TvTheme.text(this, "", 19, TvTheme.MUTED); TvTheme.add(card, monitorAdvice, 12);
+        TvTheme.add(content, card, 16);
+        action("monitor:system", "开启 / 检查无障碍服务  ›", this::openSystemSettings);
+        TvTheme.add(content, TvTheme.text(this, "在电视无障碍设置开启「英语学习换时管控」。\n授权保留时，系统会在开机时重新连接，无需先打开英语应用。", 19, TvTheme.MUTED), 16);
+        TvTheme.add(content, TvTheme.text(this, "只计云视听小电视的实际播放。零余额先学习；观看时间用完再次学习。暂停、待机和学习期间不扣时。", 19, TvTheme.MUTED), 12);
+        TvTheme.add(content, TvTheme.text(this, "部分电视待机会强停应用并关闭无障碍授权。若唤醒后未生效，请重新开启服务；可在电视管家检查后台运行限制。", 17, TvTheme.MUTED), 10);
+        refreshHomeCounters();
+    }
+    private String monitorAdvice(MonitorStatus.Kind kind) {
+        switch (kind) {
+            case NEEDS_PIN: return "请先在家长配置设置四位 PIN，再开启无障碍服务。";
+            case DISABLED: return "请在家长配置开启「观看管控」。";
+            case NEEDS_PERMISSION: return "请进入电视系统设置，在无障碍中开启「英语学习换时管控」。";
+            case CONNECTING: return "无障碍已开启，正在等待系统连接。若持续未连接，请在系统设置关闭再开启该服务，并允许应用后台运行。";
+            case ERROR: return "请检查系统无障碍服务，或重新打开应用重试。学习记录会保留。";
+            default: return "服务已连接。重启后由系统恢复；如电视管家限制后台运行，请允许本应用后台运行。";
+        }
     }
     private void unitPicker() {
         AppSettings settings = repository.settings(); List<Curriculum.Item> items = repository.curriculum().stage(settings.stage);

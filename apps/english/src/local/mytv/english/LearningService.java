@@ -2,6 +2,9 @@ package local.mytv.english;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.Intent;
+import android.content.ComponentName;
+import android.content.Context;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
@@ -18,6 +21,8 @@ import android.view.View;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityManager;
+import android.view.accessibility.AccessibilityWindowInfo;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -26,11 +31,12 @@ import java.io.PrintWriter;
 
 /** Playback detection and gate lifecycle. Learning and time state live in the repository. */
 public final class LearningService extends AccessibilityService {
-    static LearningService instance;
+    static volatile LearningService instance;
     public static final String TARGET = "com.xiaodianshi.tv.yst";
-    private static volatile String diagnostic = "未生效 · 无障碍服务未连接";
+    private static volatile MonitorStatus liveStatus = new MonitorStatus(MonitorStatus.Kind.CONNECTING, "等待系统连接");
     private final Handler handler = new Handler();
     private final PlaybackClock clock = new PlaybackClock(0);
+    private final PlaybackWindow playback = new PlaybackWindow(TARGET, "local.mytv.english");
     private StudyRepository repository;
     private AudioManager audio;
     private AudioFocusRequest focus;
@@ -38,15 +44,37 @@ public final class LearningService extends AccessibilityService {
     private View gate;
     private StudyScreen screen;
     private boolean focusHeld;
-    private boolean playerWindow;
-    private boolean shuttingDown;
-    private String foregroundPackage = "";
+    private boolean focusRequested;
+    private boolean shuttingDown = true;
     private long generation;
     private long lastDiagnostic;
     private String gateError;
+    private long samples;
 
     public static boolean isConnected() { return instance != null; }
-    public static String status() { return diagnostic; }
+    public static MonitorStatus monitorStatus(Context context, StudyRepository repository) {
+        try {
+            AccessibilityManager manager = (AccessibilityManager) context.getSystemService(ACCESSIBILITY_SERVICE);
+            boolean authorized = false;
+            ComponentName expected = new ComponentName(context, LearningService.class);
+            if (manager != null) for (AccessibilityServiceInfo service : manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)) {
+                if (expected.equals(ComponentName.unflattenFromString(service.getId()))) { authorized = true; break; }
+            }
+            return MonitorStatus.resolve(repository.hasPin(), repository.settings().enabled, authorized, isConnected(), liveStatus);
+        } catch (RuntimeException error) {
+            return new MonitorStatus(MonitorStatus.Kind.ERROR, "未生效 · 无法读取监控状态，请重试");
+        }
+    }
+
+    private void status(MonitorStatus.Kind kind, String message) { liveStatus = new MonitorStatus(kind, message); }
+
+    private final Runnable retryFocus = () -> { if (gate != null && !shuttingDown) acquireFocus(); };
+
+    private void requestSample() {
+        if (shuttingDown) return;
+        handler.removeCallbacks(poll);
+        handler.post(poll);
+    }
 
     private final Runnable poll = new Runnable() {
         @Override public void run() {
@@ -54,91 +82,92 @@ public final class LearningService extends AccessibilityService {
             try { sample(); }
             catch (RuntimeException error) {
                 clock.reset();
-                diagnostic = "未生效 · 数据读取失败，请进入家长配置检查";
+                status(MonitorStatus.Kind.ERROR, "未生效 · 数据读取失败，请进入家长配置检查");
                 Log.e("EnglishQuiz", "Control state failed", error);
                 try {
-                    if (screenOn() && targetPlayer()) showError("学习数据暂时无法读取，请重试或请家长检查。");
+                    if (screenOn() && targetWindow() == PlaybackWindow.State.PLAYER) showError("学习数据暂时无法读取，请重试或请家长检查。");
                 } catch (RuntimeException displayError) {
                     Log.e("EnglishQuiz", "Could not show control error", displayError);
                 }
             } finally {
+                handler.removeCallbacks(this);
                 if (!shuttingDown) handler.postDelayed(this, 1000);
             }
         }
     };
 
     @Override protected void onServiceConnected() {
-        handler.removeCallbacksAndMessages(null);
-        dismissGate();
+        shutdown();
         shuttingDown = false;
         instance = this;
+        repository = null;
         windows = (WindowManager) getSystemService(WINDOW_SERVICE);
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                 .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                 .setOnAudioFocusChangeListener(change -> {
-                    if (change == AudioManager.AUDIOFOCUS_LOSS) {
+                    if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+                            || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
                         focusHeld = false;
-                        final long token = generation;
-                        handler.postDelayed(() -> {
-                            if (token == generation && gate != null && !shuttingDown) acquireFocus();
-                        }, 350);
-                    }
+                        handler.removeCallbacks(retryFocus);
+                        if (gate != null && !shuttingDown) handler.postDelayed(retryFocus, 350);
+                    } else if (change == AudioManager.AUDIOFOCUS_GAIN && gate != null) focusHeld = true;
                 }, handler).build();
         clock.reset();
-        diagnostic = "检查管控状态…";
-        handler.post(poll);
+        samples = 0; lastDiagnostic = 0;
+        status(MonitorStatus.Kind.CONNECTING, "检查管控状态…");
+        requestSample();
         Log.i("EnglishQuiz", "Learning exchange monitor connected");
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        String owner = String.valueOf(event.getPackageName());
-        String name = String.valueOf(event.getClassName());
-        if (TARGET.equals(owner)) {
-            foregroundPackage = owner;
-            if (name.endsWith("Activity")) {
-                playerWindow = name.contains("CtsActivity") || name.contains("VideoPlayActivity")
-                        || name.contains("PlayerActivity");
-            }
-        } else if (!getPackageName().equals(owner) && !owner.equals("com.android.systemui")
-                && !owner.equals("android") && !owner.equals("null")) {
-            foregroundPackage = owner;
-            playerWindow = false;
-            dismissGate();
-            clock.reset();
-        } else if (getPackageName().equals(owner) && name.endsWith("SettingsActivity")) {
-            foregroundPackage = owner;
-            dismissGate();
-            clock.reset();
+        if (shuttingDown) return;
+        int type = event.getEventType();
+        if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && type != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return;
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            playback.activity(String.valueOf(event.getPackageName()), String.valueOf(event.getClassName()), event.getWindowId());
+            if (playback.definitelyOther()) { dismissGate(); clock.reset(); }
         }
+        requestSample();
     }
 
     private boolean screenOn() {
         return ((PowerManager) getSystemService(POWER_SERVICE)).isInteractive();
     }
 
-    private boolean targetPlayer() {
+    private PlaybackWindow.State targetWindow() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return false;
+        // Accessibility overlays can own input focus while the actual application changes below them.
+        // Inspect application windows before relying on the overlay's remembered underlying owner.
+        if (root == null || (gate != null && getPackageName().contentEquals(root.getPackageName() == null ? "" : root.getPackageName()))) {
+            java.util.List<AccessibilityWindowInfo> visible = getWindows();
+            try {
+                for (AccessibilityWindowInfo window : visible) {
+                    if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                    AccessibilityNodeInfo app = window.getRoot(); if (app == null) continue;
+                    try {
+                        String owner = String.valueOf(app.getPackageName());
+                        if ("android".equals(owner) || "com.android.systemui".equals(owner)) continue;
+                        return playback.root(owner, app.getWindowId(), TARGET.equals(owner) && hasPlayer(app), false);
+                    } finally { app.recycle(); }
+                }
+            } finally {
+                for (AccessibilityWindowInfo window : visible) window.recycle();
+                if (root != null) root.recycle();
+            }
+            // A missing application window is transient, not proof the child left the player.
+            return PlaybackWindow.State.UNKNOWN;
+        }
         try {
             String owner = String.valueOf(root.getPackageName());
-            // Overlay focus belongs to us. External window events invalidate its underlying owner.
-            if (gate != null && getPackageName().equals(owner))
-                return TARGET.equals(foregroundPackage) && playerWindow;
-            if (!TARGET.equals(owner)) return false;
-            foregroundPackage = TARGET;
-            boolean detected = playerWindow || hasPlayer(root);
-            if (detected) playerWindow = true;
-            return detected;
+            return playback.root(owner, root.getWindowId(), TARGET.equals(owner) && hasPlayer(root), gate != null);
         } finally { root.recycle(); }
     }
 
     private boolean hasPlayer(AccessibilityNodeInfo node) {
         String id = node.getViewIdResourceName();
-        if (id != null && (id.endsWith(":id/cts_video_play") || id.endsWith(":id/video_play_view")
-                || id.endsWith(":id/video_player"))) return true;
+        if (PlaybackWindow.isPlayerViewId(id)) return true;
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child == null) continue;
@@ -149,37 +178,49 @@ public final class LearningService extends AccessibilityService {
     }
 
     private void sample() {
+        samples++;
         if (repository == null) repository = StudyRepository.get(this);
         AppSettings settings = repository.settings();
         if (!repository.hasPin()) {
-            diagnostic = "未生效 · 请家长先设置 PIN";
+            status(MonitorStatus.Kind.NEEDS_PIN, "未生效 · 请家长先设置 PIN");
             dismissGate(); clock.reset(); return;
         }
         if (!settings.enabled) {
-            diagnostic = "未生效 · 家长已关闭管控";
+            status(MonitorStatus.Kind.DISABLED, "未生效 · 家长已关闭管控");
             dismissGate(); clock.reset(); return;
         }
-        boolean target = screenOn() && targetPlayer();
-        if (!target) {
+        if (!screenOn()) {
+            dismissGate(); clock.reset(); playback.reset();
+            status(MonitorStatus.Kind.WAITING, "正在生效 · 待机中，不计时"); return;
+        }
+        PlaybackWindow.State target = targetWindow();
+        if (target == PlaybackWindow.State.OTHER) {
             dismissGate(); clock.reset();
-            diagnostic = "正在生效 · 等待云视听小电视播放";
+            status(MonitorStatus.Kind.WAITING, "正在生效 · 等待云视听小电视播放");
+            return;
+        }
+        if (target == PlaybackWindow.State.UNKNOWN) {
+            clock.reset();
+            if (gate != null) gateStatus();
+            else status(MonitorStatus.Kind.WAITING, "正在生效 · 等待播放窗口确认，不计时");
             return;
         }
         StudyModels.Snapshot state = repository.snapshot();
         if (gate != null) {
             clock.reset();
-            diagnostic = focusHeld ? "正在生效 · 学习中，已请求暂停播放"
-                    : "正在生效 · 学习页面已显示，播放器未确认暂停";
+            gateStatus();
             return;
         }
         if (state.balanceMs <= 0 || state.dailyRemainingMs <= 0) {
             clock.reset(); showGate(); return;
         }
         long before = clock.elapsed();
-        clock.tick(SystemClock.elapsedRealtime(), audio.isMusicActive());
+        boolean playing = audio.isMusicActive();
+        clock.tick(SystemClock.elapsedRealtime(), playing);
         long consumed = clock.elapsed() - before;
         if (consumed > 0) state = repository.consumeViewing(consumed);
-        diagnostic = "正在生效 · 本轮剩余 " + ((state.balanceMs + 59999) / 60000) + " 分钟";
+        status(playing ? MonitorStatus.Kind.WATCHING : MonitorStatus.Kind.WAITING,
+                playing ? "正在计时 · 本轮剩余 " + ((state.balanceMs + 59999) / 60000) + " 分钟" : "正在生效 · 播放已暂停，不计时");
         if (state.balanceMs <= 0 || state.dailyRemainingMs <= 0) {
             clock.reset(); showGate();
         }
@@ -194,10 +235,13 @@ public final class LearningService extends AccessibilityService {
     void settingsChanged() {
         clock.reset(); dismissGate();
         // Never overwrite repository state with a cached service snapshot.
-        if (!shuttingDown) handler.post(() -> { try { sample(); } catch (RuntimeException e) {
-            Log.e("EnglishQuiz", "Settings refresh failed", e);
-            diagnostic = "未生效 · 配置读取失败";
-        } });
+        requestSample();
+    }
+
+    private void gateStatus() {
+        if (gateError != null) status(MonitorStatus.Kind.ERROR, "未生效 · " + gateError);
+        else status(MonitorStatus.Kind.LEARNING, focusHeld ? "正在生效 · 学习中，已请求暂停播放"
+                : "正在生效 · 学习页面已显示，播放器未确认暂停");
     }
 
     void preview() {
@@ -285,9 +329,11 @@ public final class LearningService extends AccessibilityService {
 
     private void acquireFocus() {
         if (audio == null || focus == null) return;
-        focusHeld = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        focusRequested = true;
+        try { focusHeld = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED; }
+        catch (RuntimeException error) { focusHeld = false; Log.w("EnglishQuiz", "Could not request player audio focus", error); }
+        gateStatus();
         if (!focusHeld) {
-            diagnostic = "正在生效 · 学习页面已显示，播放器未确认暂停";
             Log.w("EnglishQuiz", "Player did not grant transient audio focus");
         }
     }
@@ -318,18 +364,19 @@ public final class LearningService extends AccessibilityService {
             clock.reset(); acquireFocus(); wrapper.requestFocus(View.FOCUS_DOWN);
             Log.i("EnglishQuiz", "Learning gate shown");
         } catch (RuntimeException error) {
-            if (screen != null) { screen.close(); screen = null; }
-            diagnostic = "未生效 · 无法显示学习页面，请家长检查";
+            dismissGate();
+            status(MonitorStatus.Kind.ERROR, "未生效 · 无法显示学习页面，请家长检查");
             Log.e("EnglishQuiz", "Could not attach learning gate", error);
         }
     }
 
     private void leaveToHome() {
-        dismissGate(); clock.reset(); foregroundPackage = ""; playerWindow = false;
+        dismissGate(); clock.reset(); playback.reset();
         performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
     private void dismissGate() {
+        handler.removeCallbacks(retryFocus);
         generation++; gateError = null;
         if (screen != null) { screen.close(); screen = null; }
         if (gate != null && windows != null) {
@@ -337,29 +384,46 @@ public final class LearningService extends AccessibilityService {
             catch (RuntimeException error) { Log.w("EnglishQuiz", "Gate already detached", error); }
         }
         gate = null;
-        if (focusHeld && audio != null && focus != null) audio.abandonAudioFocusRequest(focus);
-        focusHeld = false;
+        if (focusRequested && audio != null && focus != null) try { audio.abandonAudioFocusRequest(focus); }
+        catch (RuntimeException error) { Log.w("EnglishQuiz", "Could not release player audio focus", error); }
+        focusHeld = false; focusRequested = false;
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 
     private void shutdown() {
         shuttingDown = true; handler.removeCallbacksAndMessages(null);
-        dismissGate(); clock.reset();
+        dismissGate(); clock.reset(); playback.reset();
         if (instance == this) instance = null;
-        diagnostic = "未生效 · 无障碍服务未连接";
+        status(MonitorStatus.Kind.CONNECTING, "等待系统连接 · 无障碍服务未连接");
     }
 
-    @Override public void onInterrupt() { dismissGate(); clock.reset(); }
+    @Override public void onInterrupt() { dismissGate(); clock.reset(); playback.reset(); requestSample(); }
     @Override public boolean onUnbind(Intent intent) { shutdown(); return super.onUnbind(intent); }
     @Override public void onDestroy() { shutdown(); super.onDestroy(); }
 
     @Override protected void dump(FileDescriptor descriptor, PrintWriter writer, String[] args) {
-        writer.println("EnglishQuiz status=" + diagnostic + " gate=" + (gate != null));
+        writer.println("EnglishQuiz state=" + liveStatus.kind + " status=" + liveStatus.message + " gate=" + (gate != null)
+                + " samples=" + samples + " connected=" + (instance == this) + " shuttingDown=" + shuttingDown);
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) try {
+            java.util.Set<String> ids = new java.util.LinkedHashSet<>(); collectIds(root, ids);
+            writer.println("rootPackage=" + root.getPackageName() + " rootClass=" + root.getClassName()
+                    + " windowId=" + root.getWindowId() + " viewIds=" + ids);
+        } finally { root.recycle(); }
         if (repository != null) try {
             StudyModels.Snapshot state = repository.snapshot();
             writer.println("day=" + state.day + " balanceMs=" + state.balanceMs
                     + " usedMs=" + state.todayUsedMs + " dailyRemainingMs=" + state.dailyRemainingMs);
         } catch (RuntimeException error) { writer.println("Data unavailable: " + error.getClass().getSimpleName()); }
+    }
+
+    private void collectIds(AccessibilityNodeInfo node, java.util.Set<String> ids) {
+        if (ids.size() >= 64) return;
+        if (node.getViewIdResourceName() != null) ids.add(node.getViewIdResourceName());
+        for (int n = 0; n < node.getChildCount() && ids.size() < 64; n++) {
+            AccessibilityNodeInfo child = node.getChild(n); if (child == null) continue;
+            try { collectIds(child, ids); } finally { child.recycle(); }
+        }
     }
 }

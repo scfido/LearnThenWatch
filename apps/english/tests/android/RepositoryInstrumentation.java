@@ -59,6 +59,11 @@ public final class RepositoryInstrumentation extends Instrumentation {
                 result.putString("stream", "PASS: isolated accessibility gate probe finished; singleton restored.\n");
                 finish(Activity.RESULT_OK, result); return;
             }
+            if (arguments != null && "monitor".equals(arguments.getString("screen"))) {
+                int checks = MonitorServiceChecks.run(this, context, !"false".equals(arguments.getString("standby")));
+                result.putString("stream", "PASS: " + checks + " actual monitor lifecycle/playback assertions; isolated data cleaned.\n");
+                finish(Activity.RESULT_OK, result); return;
+            }
             defaultsAndPin();
             correctionRecoveryAndReward();
             dailyLimitsAndRollover();

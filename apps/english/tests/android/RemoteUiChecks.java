@@ -117,6 +117,12 @@ final class RemoteUiChecks {
         checkPage("parent"); checkFocus("parent:unit"); check(repository.settings().currentUnit == 1, "unit selection returns to setting and applies chosen unit");
         key(KeyEvent.KEYCODE_DPAD_CENTER); key(KeyEvent.KEYCODE_BACK); checkPage("parent"); checkFocus("parent:unit");
 
+        seek("parent:monitor", KeyEvent.KEYCODE_DPAD_DOWN); key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("monitor");
+        checkFocus("monitor:system"); noReturnButtons();
+        MonitorStatus monitor = LearningService.monitorStatus(context, repository);
+        check(((TextView) activity.getWindow().getDecorView().findViewWithTag("monitor:status")).getText().toString().equals(monitor.message), "monitor page uses shared live status");
+        save("monitor"); key(KeyEvent.KEYCODE_BACK); checkPage("parent"); checkFocus("parent:monitor");
+
         seek("parent:sources", KeyEvent.KEYCODE_DPAD_DOWN); key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("sources");
         String sourceFocus = focusTag(); key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("license"); noReturnButtons();
         key(KeyEvent.KEYCODE_DPAD_DOWN); key(KeyEvent.KEYCODE_BACK); checkPage("sources"); checkFocus(sourceFocus);
@@ -142,6 +148,11 @@ final class RemoteUiChecks {
         main(() -> activity.startActivity(new Intent(activity, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP)));
         settle(400); checkPage("pin");
         key(KeyEvent.KEYCODE_BACK); checkPage("home");
+        menu("parent"); unlock(); seek("parent:monitor", KeyEvent.KEYCODE_DPAD_DOWN);
+        key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("monitor");
+        key(KeyEvent.KEYCODE_HOME); settle(250);
+        main(() -> activity.startActivity(new Intent(activity, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP)));
+        settle(400); checkPage("pin"); key(KeyEvent.KEYCODE_BACK); checkPage("home");
         menu("parent"); unlock(); seek("parent:records", KeyEvent.KEYCODE_DPAD_DOWN);
         key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("records");
         key(KeyEvent.KEYCODE_HOME); settle(250);
