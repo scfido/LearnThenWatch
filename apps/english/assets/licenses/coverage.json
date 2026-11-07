@@ -1,0 +1,45 @@
+{
+  "version": "2026.11.07",
+  "reference_headwords": {
+    "KET": 1733,
+    "PET": 3113
+  },
+  "course_items": {
+    "KET": 1715,
+    "PET": 3100
+  },
+  "natural_examples": {
+    "KET": 1162,
+    "PET": 1709
+  },
+  "definition_clues": {
+    "KET": 553,
+    "PET": 1391
+  },
+  "editorial_examples": 713,
+  "missing": 0,
+  "audio_files_expected": 3187,
+  "review_status": "automated validation and spot checks; full human editorial review pending",
+  "sources": {
+    "ket.pdf": {
+      "url": "https://www.cambridgeenglish.org/Images/506886-a2-key-2020-vocabulary-list.pdf",
+      "sha256": "2abe174d067cd17ffa061cfc4bbbc0e5a55185ac696a5ef8ba49372c753a3ad6"
+    },
+    "pet.pdf": {
+      "url": "https://www.cambridgeenglish.org/Images/506887-b1-preliminary-vocabulary-list.pdf",
+      "sha256": "df5e3c31bb26205c2cfc2e7a94a0171d4f4769d5c1e42a3615fe6aa1b5fdab29"
+    },
+    "ecdict.csv": {
+      "url": "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv",
+      "sha256": "d1ecbdf9ee2b920afb6f430ca6b6bb9f559588cf0dff86e04bd255f9390843cc"
+    },
+    "ECDICT-LICENSE.txt": {
+      "url": "https://raw.githubusercontent.com/skywind3000/ECDICT/master/LICENSE",
+      "sha256": "f8552dd246f61a4e064569eae6194a01c6b3d63b03bf27c6ca863593c549ed0f"
+    },
+    "cmn.txt": {
+      "url": "https://raw.githubusercontent.com/shaoshengsong/pytorch-transformer-en-zh-translation-demo/main/cmn-eng/cmn.txt",
+      "sha256": "4ac42e73300680f1ee96deb4b1deace129f207f329acdc3632ac65ad7166941b"
+    }
+  }
+}

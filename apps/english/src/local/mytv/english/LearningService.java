@@ -1,7 +1,6 @@
 package local.mytv.english;
 
 import android.accessibilityservice.AccessibilityService;
-import android.content.SharedPreferences;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
@@ -22,80 +21,117 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import java.util.Random;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 
+/** Playback detection and gate lifecycle. Learning and time state live in the repository. */
 public final class LearningService extends AccessibilityService {
     static LearningService instance;
-    private static final String TARGET = "com.xiaodianshi.tv.yst";
+    public static final String TARGET = "com.xiaodianshi.tv.yst";
+    private static volatile String diagnostic = "未生效 · 无障碍服务未连接";
     private final Handler handler = new Handler();
-    private final Random random = new Random();
-    private SharedPreferences preferences;
-    private PlaybackClock clock;
+    private final PlaybackClock clock = new PlaybackClock(0);
+    private StudyRepository repository;
     private AudioManager audio;
     private AudioFocusRequest focus;
     private WindowManager windows;
-    private View quiz;
-    private boolean preview;
+    private View gate;
+    private StudyScreen screen;
     private boolean focusHeld;
     private boolean playerWindow;
-    private boolean wasPlaying;
-    private int lastQuestion = -1;
-    private long lastSave;
+    private boolean shuttingDown;
+    private String foregroundPackage = "";
+    private long generation;
     private long lastDiagnostic;
-    private String windowDiagnostic = "unknown";
-    private boolean wasScreenOn;
+    private String gateError;
+
+    public static boolean isConnected() { return instance != null; }
+    public static String status() { return diagnostic; }
 
     private final Runnable poll = new Runnable() {
         @Override public void run() {
-            try { sample(); } catch (RuntimeException e) { Log.e("EnglishQuiz", "Monitor error", e); }
-            handler.postDelayed(this, 1000);
+            if (shuttingDown) return;
+            try { sample(); }
+            catch (RuntimeException error) {
+                clock.reset();
+                diagnostic = "未生效 · 数据读取失败，请进入家长配置检查";
+                Log.e("EnglishQuiz", "Control state failed", error);
+                try {
+                    if (screenOn() && targetPlayer()) showError("学习数据暂时无法读取，请重试或请家长检查。");
+                } catch (RuntimeException displayError) {
+                    Log.e("EnglishQuiz", "Could not show control error", displayError);
+                }
+            } finally {
+                if (!shuttingDown) handler.postDelayed(this, 1000);
+            }
         }
     };
 
     @Override protected void onServiceConnected() {
         handler.removeCallbacksAndMessages(null);
-        if (quiz != null) dismiss(false);
+        dismissGate();
+        shuttingDown = false;
         instance = this;
-        preferences = getSharedPreferences("learning", MODE_PRIVATE);
-        clock = new PlaybackClock(preferences.getLong("elapsed", 0));
-        audio = (AudioManager) getSystemService(AUDIO_SERVICE);
         windows = (WindowManager) getSystemService(WINDOW_SERVICE);
+        audio = (AudioManager) getSystemService(AUDIO_SERVICE);
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                 .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
                 .setOnAudioFocusChangeListener(change -> {
-                    if (quiz != null && change == AudioManager.AUDIOFOCUS_LOSS) {
-                        handler.postDelayed(() -> { if (quiz != null) acquireFocus(); }, 300);
+                    if (change == AudioManager.AUDIOFOCUS_LOSS) {
+                        focusHeld = false;
+                        final long token = generation;
+                        handler.postDelayed(() -> {
+                            if (token == generation && gate != null && !shuttingDown) acquireFocus();
+                        }, 350);
                     }
                 }, handler).build();
+        clock.reset();
+        diagnostic = "检查管控状态…";
         handler.post(poll);
-        Log.i("EnglishQuiz", "Monitor connected; interval=120 seconds");
+        Log.i("EnglishQuiz", "Learning exchange monitor connected");
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         String owner = String.valueOf(event.getPackageName());
-        if (quiz != null && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                && (owner.equals("com.mitv.tvhome") || owner.equals("com.xiaomi.mitv.settings")
-                    || owner.equals("com.android.tv.settings"))) dismiss(false);
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                && TARGET.contentEquals(event.getPackageName() == null ? "" : event.getPackageName())) {
-            String name = String.valueOf(event.getClassName());
+        String name = String.valueOf(event.getClassName());
+        if (TARGET.equals(owner)) {
+            foregroundPackage = owner;
             if (name.endsWith("Activity")) {
                 playerWindow = name.contains("CtsActivity") || name.contains("VideoPlayActivity")
                         || name.contains("PlayerActivity");
             }
+        } else if (!getPackageName().equals(owner) && !owner.equals("com.android.systemui")
+                && !owner.equals("android") && !owner.equals("null")) {
+            foregroundPackage = owner;
+            playerWindow = false;
+            dismissGate();
+            clock.reset();
+        } else if (getPackageName().equals(owner) && name.endsWith("SettingsActivity")) {
+            foregroundPackage = owner;
+            dismissGate();
+            clock.reset();
         }
+    }
+
+    private boolean screenOn() {
+        return ((PowerManager) getSystemService(POWER_SERVICE)).isInteractive();
     }
 
     private boolean targetPlayer() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) { windowDiagnostic = "no active window"; return false; }
+        if (root == null) return false;
         try {
-            windowDiagnostic = "package=" + root.getPackageName() + " playerWindow=" + playerWindow;
-            if (!TARGET.contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) return false;
-            return playerWindow || hasPlayer(root);
+            String owner = String.valueOf(root.getPackageName());
+            // Overlay focus belongs to us. External window events invalidate its underlying owner.
+            if (gate != null && getPackageName().equals(owner))
+                return TARGET.equals(foregroundPackage) && playerWindow;
+            if (!TARGET.equals(owner)) return false;
+            foregroundPackage = TARGET;
+            boolean detected = playerWindow || hasPlayer(root);
+            if (detected) playerWindow = true;
+            return detected;
         } finally { root.recycle(); }
     }
 
@@ -106,157 +142,224 @@ public final class LearningService extends AccessibilityService {
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child == null) continue;
-            boolean found;
-            try { found = hasPlayer(child); } finally { child.recycle(); }
-            if (found) return true;
+            try { if (hasPlayer(child)) return true; }
+            finally { child.recycle(); }
         }
         return false;
     }
 
     private void sample() {
-        boolean screenOn = ((PowerManager) getSystemService(POWER_SERVICE)).isInteractive();
-        if (quiz != null) {
-            // Home/settings remain available. Hide the quiz outside the viewing app;
-            // retain the pending question and require it when viewing returns.
-            if (!screenOn) dismiss(false);
+        if (repository == null) repository = StudyRepository.get(this);
+        AppSettings settings = repository.settings();
+        if (!repository.hasPin()) {
+            diagnostic = "未生效 · 请家长先设置 PIN";
+            dismissGate(); clock.reset(); return;
+        }
+        if (!settings.enabled) {
+            diagnostic = "未生效 · 家长已关闭管控";
+            dismissGate(); clock.reset(); return;
+        }
+        boolean target = screenOn() && targetPlayer();
+        if (!target) {
+            dismissGate(); clock.reset();
+            diagnostic = "正在生效 · 等待云视听小电视播放";
             return;
         }
-        if (!preferences.getBoolean("enabled", true)) { clock.tick(SystemClock.elapsedRealtime(), false); return; }
-        boolean target = screenOn && targetPlayer();
-        if (preferences.getBoolean("due", false) && target) { showQuiz(false); return; }
-        boolean playing = target && audio.isMusicActive();
+        StudyModels.Snapshot state = repository.snapshot();
+        if (gate != null) {
+            clock.reset();
+            diagnostic = focusHeld ? "正在生效 · 学习中，已请求暂停播放"
+                    : "正在生效 · 学习页面已显示，播放器未确认暂停";
+            return;
+        }
+        if (state.balanceMs <= 0 || state.dailyRemainingMs <= 0) {
+            clock.reset(); showGate(); return;
+        }
+        long before = clock.elapsed();
+        clock.tick(SystemClock.elapsedRealtime(), audio.isMusicActive());
+        long consumed = clock.elapsed() - before;
+        if (consumed > 0) state = repository.consumeViewing(consumed);
+        diagnostic = "正在生效 · 本轮剩余 " + ((state.balanceMs + 59999) / 60000) + " 分钟";
+        if (state.balanceMs <= 0 || state.dailyRemainingMs <= 0) {
+            clock.reset(); showGate();
+        }
         long now = SystemClock.elapsedRealtime();
         if (now - lastDiagnostic >= 15000) {
-            Log.i("EnglishQuiz", "Detection: " + windowDiagnostic + " target=" + target
-                    + " music=" + audio.isMusicActive() + " elapsedMs=" + clock.elapsed());
             lastDiagnostic = now;
-        }
-        clock.tick(now, playing);
-        if (playing != wasPlaying || screenOn != wasScreenOn) {
-            Log.i("EnglishQuiz", "playing=" + playing + " elapsedMs=" + clock.elapsed());
-            wasPlaying = playing; wasScreenOn = screenOn;
-        }
-        if (now - lastSave >= 5000) {
-            preferences.edit().putLong("elapsed", clock.elapsed()).apply(); lastSave = now;
-        }
-        if (clock.elapsed() >= 120000) {
-            preferences.edit().putBoolean("due", true).putLong("elapsed", 120000).commit();
-            showQuiz(false);
+            Log.i("EnglishQuiz", "Viewing balanceMs=" + state.balanceMs
+                    + " usedMs=" + state.todayUsedMs + " audio=" + audio.isMusicActive());
         }
     }
 
     void settingsChanged() {
-        if (!preferences.getBoolean("enabled", true)) {
-            dismiss(false); clock.reset();
-            preferences.edit().putBoolean("due", false).putLong("elapsed", 0).apply();
+        clock.reset(); dismissGate();
+        // Never overwrite repository state with a cached service snapshot.
+        if (!shuttingDown) handler.post(() -> { try { sample(); } catch (RuntimeException e) {
+            Log.e("EnglishQuiz", "Settings refresh failed", e);
+            diagnostic = "未生效 · 配置读取失败";
+        } });
+    }
+
+    void preview() {
+        startActivity(new Intent(this, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+    }
+
+    private void showGate() {
+        if (gate != null || shuttingDown) return;
+        try {
+            if (repository.snapshot().dailyRemainingMs <= 0) { showDailyLimit(); return; }
+            buildStudyGate();
+        } catch (RuntimeException error) {
+            Log.e("EnglishQuiz", "Could not create learning gate", error);
+            showError("学习内容暂时无法打开，请重试或请家长检查。");
         }
     }
-    void preview() { if (quiz == null) showQuiz(true); }
 
-    private void acquireFocus() {
-        focusHeld = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
-        Log.i("EnglishQuiz", "Pause focus granted=" + focusHeld);
+    private void buildStudyGate() {
+        final long token = ++generation;
+        screen = new StudyScreen(this, repository, () -> {
+            if (token != generation) return;
+            try {
+                StudyModels.Snapshot state = repository.snapshot();
+                if (state.balanceMs > 0 && state.dailyRemainingMs > 0) dismissGate();
+                else leaveToHome();
+            } catch (RuntimeException e) { showError("观看额度读取失败，请重试。"); }
+        }, this::leaveToHome, false);
+        attach(screen.view());
     }
 
-    private void showQuiz(boolean isPreview) {
-        if (quiz != null) return;
-        preview = isPreview;
-        Questions question = new Questions(random, lastQuestion);
-        lastQuestion = question.index;
-        LinearLayout page = new LinearLayout(this) {
+    private LinearLayout simplePage(String title, String message) {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL); page.setGravity(Gravity.CENTER);
+        page.setPadding(dp(48), dp(24), dp(48), dp(24));
+        page.setBackgroundColor(Color.rgb(255, 248, 233));
+        TextView heading = new TextView(this);
+        heading.setText(title); heading.setTextSize(34); heading.setTextColor(Color.rgb(22, 125, 141));
+        heading.setGravity(Gravity.CENTER); page.addView(heading);
+        TextView body = new TextView(this);
+        body.setText(message); body.setTextSize(22); body.setGravity(Gravity.CENTER);
+        body.setTextColor(Color.rgb(53, 72, 78)); body.setPadding(0, dp(20), 0, dp(20));
+        page.addView(body); return page;
+    }
+
+    private void addButton(LinearLayout page, String label, Runnable action) {
+        Button button = new Button(this);
+        button.setText(label); button.setAllCaps(false); button.setTextSize(23);
+        button.setTextColor(Color.rgb(22, 78, 89)); button.setPadding(dp(20), dp(8), dp(20), dp(8));
+        button.setBackground(buttonBackground(false));
+        button.setOnFocusChangeListener((v, focused) -> {
+            v.setBackground(buttonBackground(focused));
+            v.animate().translationY(focused ? -dp(1) : 0).setDuration(130).start();
+        });
+        button.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(460), dp(62));
+        size.topMargin = dp(12); page.addView(button, size);
+    }
+
+    private GradientDrawable buttonBackground(boolean focused) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(dp(14)); shape.setColor(focused ? Color.rgb(222, 240, 232) : Color.WHITE);
+        shape.setStroke(dp(focused ? 3 : 1), Color.rgb(22, 125, 141)); return shape;
+    }
+
+    private void showDailyLimit() {
+        LinearLayout page = simplePage("今天的观看时间用完啦", "今天已经完成约定的观看计划。\n可以继续英语探险，明天学习后再换观看时间。");
+        addButton(page, "继续学习 · 不兑换时间", () -> { dismissGate(); buildStudyGate(); });
+        attach(page);
+    }
+
+    private void showError(String message) {
+        if (gate != null && message.equals(gateError)) return;
+        dismissGate(); gateError = message;
+        LinearLayout page = simplePage("需要一点帮助", message);
+        addButton(page, "重试", () -> {
+            dismissGate(); repository = null;
+            // The existing periodic poll will retry; do not create a second polling loop.
+        });
+        addButton(page, "打开学习 APP", () -> {
+            dismissGate();
+            startActivity(new Intent(this, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        });
+        attach(page);
+    }
+
+    private void acquireFocus() {
+        if (audio == null || focus == null) return;
+        focusHeld = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        if (!focusHeld) {
+            diagnostic = "正在生效 · 学习页面已显示，播放器未确认暂停";
+            Log.w("EnglishQuiz", "Player did not grant transient audio focus");
+        }
+    }
+
+    private void attach(View content) {
+        LinearLayout wrapper = new LinearLayout(this) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
-                if (event.getKeyCode() == KeyEvent.KEYCODE_BACK
-                        || event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_PLAY
-                        || event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) return true;
+                int key = event.getKeyCode();
+                if (key == KeyEvent.KEYCODE_BACK) {
+                    if (event.getAction() == KeyEvent.ACTION_UP) leaveToHome();
+                    return true;
+                }
+                if (key == KeyEvent.KEYCODE_MEDIA_PLAY || key == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                        || key == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || key == KeyEvent.KEYCODE_MEDIA_NEXT)
+                    return true;
                 return super.dispatchKeyEvent(event);
             }
         };
-        page.setOrientation(LinearLayout.VERTICAL); page.setGravity(Gravity.CENTER);
-        page.setPadding(100, 30, 100, 30); page.setBackgroundColor(Color.rgb(15, 23, 42));
-        text(page, isPreview ? "英语小挑战 · 预览" : "看了两分钟，学一个新知识", 23, Color.rgb(125, 211, 252));
-        text(page, question.prompt, 32, Color.WHITE);
-        TextView feedback = text(page, "用遥控器选择答案，答对继续观看", 19, Color.LTGRAY);
-        Button[] choices = new Button[3];
-        for (int i = 0; i < 3; i++) {
-            final int index = i;
-            Button button = new Button(this); choices[i] = button;
-            button.setText((char) ('A' + i) + "   " + question.options[i]);
-            button.setTextSize(23); button.setTextColor(Color.WHITE);
-            button.setPadding(25, 4, 25, 4); button.setAllCaps(false);
-            button.setBackground(background(false));
-            button.setOnFocusChangeListener((v, focused) -> v.setBackground(background(focused)));
-            LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(780, 78);
-            size.topMargin = 12; page.addView(button, size);
-            button.setOnClickListener(v -> {
-                if (index == question.correct) {
-                    feedback.setText("答对了！继续观看吧。");
-                    for (Button option : choices) option.setEnabled(false);
-                    Log.i("EnglishQuiz", "Correct answer; preview=" + preview);
-                    handler.postDelayed(() -> dismiss(true), 650);
-                } else {
-                    feedback.setText("再想一想，你可以的！");
-                    Log.i("EnglishQuiz", "Incorrect answer; question remains visible");
-                }
-            });
-        }
-        if (isPreview) {
-            Button close = new Button(this); close.setText("结束预览");
-            close.setOnClickListener(v -> dismiss(false)); page.addView(close);
-        }
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        wrapper.addView(content, new LinearLayout.LayoutParams(-1, -1));
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(-1, -1,
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.OPAQUE);
-        params.setTitle("EnglishQuiz");
+        params.setTitle("EnglishLearningGate");
         try {
-            windows.addView(page, params); quiz = page;
-            if (!isPreview) acquireFocus();
-            choices[0].requestFocus();
-            Log.i("EnglishQuiz", "Question shown; preview=" + isPreview);
-        } catch (RuntimeException error) { Log.e("EnglishQuiz", "Could not show question", error); }
-    }
-
-    private GradientDrawable background(boolean focused) {
-        GradientDrawable result = new GradientDrawable(); result.setCornerRadius(14);
-        result.setColor(focused ? Color.rgb(3, 105, 161) : Color.rgb(30, 41, 59));
-        result.setStroke(focused ? 4 : 1, focused ? Color.rgb(125, 211, 252) : Color.rgb(71, 85, 105));
-        return result;
-    }
-    private TextView text(LinearLayout parent, String value, int size, int color) {
-        TextView view = new TextView(this); view.setText(value); view.setTextSize(size);
-        view.setTextColor(color); view.setGravity(Gravity.CENTER); view.setPadding(0, 10, 0, 10);
-        parent.addView(view); return view;
-    }
-
-    private void dismiss(boolean correct) {
-        if (quiz == null) return;
-        try { windows.removeView(quiz); }
-        catch (IllegalArgumentException detached) { Log.d("EnglishQuiz", "Overlay already detached"); }
-        quiz = null;
-        if (correct && !preview) {
-            clock.reset();
-            preferences.edit().putBoolean("due", false).putLong("elapsed", 0).commit();
+            windows.addView(wrapper, params); gate = wrapper;
+            clock.reset(); acquireFocus(); wrapper.requestFocus(View.FOCUS_DOWN);
+            Log.i("EnglishQuiz", "Learning gate shown");
+        } catch (RuntimeException error) {
+            if (screen != null) { screen.close(); screen = null; }
+            diagnostic = "未生效 · 无法显示学习页面，请家长检查";
+            Log.e("EnglishQuiz", "Could not attach learning gate", error);
         }
-        if (focusHeld) { audio.abandonAudioFocusRequest(focus); focusHeld = false; }
     }
-    @Override public void onInterrupt() { }
+
+    private void leaveToHome() {
+        dismissGate(); clock.reset(); foregroundPackage = ""; playerWindow = false;
+        performGlobalAction(GLOBAL_ACTION_HOME);
+    }
+
+    private void dismissGate() {
+        generation++; gateError = null;
+        if (screen != null) { screen.close(); screen = null; }
+        if (gate != null && windows != null) {
+            try { windows.removeViewImmediate(gate); }
+            catch (RuntimeException error) { Log.w("EnglishQuiz", "Gate already detached", error); }
+        }
+        gate = null;
+        if (focusHeld && audio != null && focus != null) audio.abandonAudioFocusRequest(focus);
+        focusHeld = false;
+    }
+
+    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+
+    private void shutdown() {
+        shuttingDown = true; handler.removeCallbacksAndMessages(null);
+        dismissGate(); clock.reset();
+        if (instance == this) instance = null;
+        diagnostic = "未生效 · 无障碍服务未连接";
+    }
+
+    @Override public void onInterrupt() { dismissGate(); clock.reset(); }
+    @Override public boolean onUnbind(Intent intent) { shutdown(); return super.onUnbind(intent); }
+    @Override public void onDestroy() { shutdown(); super.onDestroy(); }
+
     @Override protected void dump(FileDescriptor descriptor, PrintWriter writer, String[] args) {
-        writer.println("EnglishQuiz enabled=" + (preferences != null && preferences.getBoolean("enabled", true))
-                + " due=" + (preferences != null && preferences.getBoolean("due", false))
-                + " elapsedMs=" + (clock == null ? -1 : clock.elapsed())
-                + " quizVisible=" + (quiz != null));
-    }
-    @Override public boolean onUnbind(Intent intent) {
-        handler.removeCallbacksAndMessages(null); dismiss(false);
-        if (preferences != null && clock != null) preferences.edit().putLong("elapsed", clock.elapsed()).commit();
-        if (instance == this) instance = null;
-        return super.onUnbind(intent);
-    }
-    @Override public void onDestroy() {
-        handler.removeCallbacksAndMessages(null); dismiss(false);
-        if (preferences != null && clock != null) preferences.edit().putLong("elapsed", clock.elapsed()).commit();
-        if (instance == this) instance = null;
-        super.onDestroy();
+        writer.println("EnglishQuiz status=" + diagnostic + " gate=" + (gate != null));
+        if (repository != null) try {
+            StudyModels.Snapshot state = repository.snapshot();
+            writer.println("day=" + state.day + " balanceMs=" + state.balanceMs
+                    + " usedMs=" + state.todayUsedMs + " dailyRemainingMs=" + state.dailyRemainingMs);
+        } catch (RuntimeException error) { writer.println("Data unavailable: " + error.getClass().getSimpleName()); }
     }
 }

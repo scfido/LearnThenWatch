@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.mytv.english.tests">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="28" />
+    <application android:label="English transactional tests" />
+    <instrumentation android:name="local.mytv.english.RepositoryInstrumentation" android:targetPackage="local.mytv.english" android:label="Isolated English repository tests" />
+</manifest>

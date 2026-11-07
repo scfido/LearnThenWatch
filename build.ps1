@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('bilistart', 'english', 'all')]
+    [ValidateSet('bilistart', 'english', 'mictest', 'all')]
     [string]$App = 'bilistart',
     [switch]$English
 )
@@ -20,7 +20,7 @@ if (!(Test-Path -LiteralPath $key)) {
     & keytool -genkeypair -keystore $key -storepass android -keypass android -alias local -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Local TV Startup'
     if ($LASTEXITCODE) { throw 'keytool failed' }
 }
-$apps = if ($App -eq 'all') { @('bilistart', 'english') } else { @($App) }
+$apps = if ($App -eq 'all') { @('bilistart', 'english', 'mictest') } else { @($App) }
 foreach ($currentApp in $apps) {
     $project = Join-Path $PSScriptRoot "apps\$currentApp"
     $build = Join-Path $project 'build'
@@ -33,7 +33,8 @@ foreach ($currentApp in $apps) {
     & "$tools\d8.bat" --lib $android --min-api $minApi --output "$build\dex" @classes
     if ($LASTEXITCODE) { throw 'd8 failed' }
     $resources = if (Test-Path "$project\res") { @('-S', "$project\res") } else { @() }
-    & "$tools\aapt.exe" package -f -M "$project\AndroidManifest.xml" -I $android @resources -F "$build\unsigned.apk"
+    $assets = if (Test-Path "$project\assets") { @('-A', "$project\assets") } else { @() }
+    & "$tools\aapt.exe" package -f -M "$project\AndroidManifest.xml" -I $android @resources @assets -F "$build\unsigned.apk"
     if ($LASTEXITCODE) { throw 'aapt failed' }
     Push-Location "$build\dex"
     try {
@@ -42,7 +43,7 @@ foreach ($currentApp in $apps) {
     } finally { Pop-Location }
     & "$tools\zipalign.exe" -f 4 "$build\unsigned.apk" "$build\aligned.apk"
     if ($LASTEXITCODE) { throw 'zipalign failed' }
-    $name = if ($currentApp -eq 'english') { 'englishquiz.apk' } else { 'bilistart.apk' }
+    $name = if ($currentApp -eq 'english') { 'englishquiz.apk' } elseif ($currentApp -eq 'mictest') { 'mictest.apk' } else { 'bilistart.apk' }
     & "$tools\apksigner.bat" sign --ks $key --ks-pass pass:android --out "$build\$name" "$build\aligned.apk"
     if ($LASTEXITCODE) { throw 'signing failed' }
     & "$tools\apksigner.bat" verify "$build\$name"

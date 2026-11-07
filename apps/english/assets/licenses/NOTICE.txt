@@ -1,0 +1,48 @@
+看电视学英语 / Offline course notices
+Course version: 2026.11.07
+
+Vocabulary-level reference
+Cambridge English A2 Key / A2 Key for Schools Vocabulary List, August 2025:
+https://www.cambridgeenglish.org/Images/506886-a2-key-2020-vocabulary-list.pdf
+Cambridge English B1 Preliminary / Preliminary for Schools Vocabulary List, August 2025:
+https://www.cambridgeenglish.org/Images/506887-b1-preliminary-vocabulary-list.pdf
+The original PDFs, test questions, Cambridge examples, and Cambridge logos are not
+included in this application. Headwords are normalised and arranged into this
+application's own learning topics. This application is not endorsed by Cambridge.
+The reference lists are not exhaustive lists of all vocabulary used in the exams.
+The mapping from parsed reference headwords is in reference-coverage.tsv.
+
+Chinese dictionary meanings
+ECDICT, https://github.com/skywind3000/ECDICT
+Source repository MIT License, copyright (c) 2025 Linwei.
+The full licence notice is included in ECDICT-LICENSE.txt.
+Selected meanings have been simplified, shortened, and corrected for this course.
+Original learner examples and meaning corrections are in tools/editorial.tsv in
+the source repository. Editorial sentences are contributed as part of this app.
+
+Bilingual sentence examples
+Some sentences and translations are from the Tatoeba Project:
+https://tatoeba.org
+via the ManyThings English-Mandarin sentence-pair collection:
+https://www.manythings.org/anki/
+License: Creative Commons Attribution 2.0 France (CC BY 2.0 FR)
+https://creativecommons.org/licenses/by/2.0/fr/
+Per-sentence IDs and author names are retained in sentence-attribution.tsv.
+English sentences are unchanged. Chinese translations have been converted from
+traditional to simplified Chinese with OpenCC. The source download mirror and
+SHA-256 hashes are recorded in coverage.json. The original source's full corpus
+is not included. No Tatoeba audio recordings are used.
+
+Offline pronunciation
+The included pronunciation files were synthesized locally from the vocabulary
+headwords using Microsoft Zira Desktop (en-US), then encoded as MP3. They contain
+synthetic speech, not human studio recordings. The voice engine and voice-model
+files are not redistributed. The app does not need a network connection or an
+installed Android English TTS voice to play them.
+
+Review status
+All records, source references, and audio files receive automated integrity
+checks. Learner meanings have received a fast editorial scan and targeted
+corrections. Corpus sentence/sense alignment and pronunciation have not received
+an exhaustive human review. Marked Meaning: word cards are recognition/listening
+material and must not be used as sentence or contextual-comprehension exercises.
