@@ -1,2 +1,13 @@
 /build/
-/apps/*/build/
+**/build/
+/.gradle/
+/local.properties
+/.local/
+*.jks
+*.keystore
+**/signing.json
+*.pem
+__pycache__/
+*.pyc
+.idea/
+*.iml

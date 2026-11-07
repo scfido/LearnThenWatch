@@ -1,57 +1,92 @@
-# MyTV
+# 学后看 · LearnThenWatch
 
-小米电视上的三个独立 Android 应用，放在同一个仓库维护，共用构建脚本，分别生成 APK。
+**先学一轮英语，再看一会儿电视。**
 
-| 应用 | 用途 | 包名 | 文档 |
-| --- | --- | --- | --- |
-| 小电视开机启动 | 开机后等待系统就绪，再打开云视听小电视 | `local.mytv.bilistart` | [配置和恢复](apps/bilistart/README.md) |
-| 看电视学英语 | KET/PET 分阶段学习，完成任务换观看时间 | `local.mytv.english` | [安装和使用](apps/english/README.md) |
-| 电视麦克风测试 | 验证电视内置及遥控器输入的录音和回放 | `local.mytv.mictest` | [测试方法](apps/mictest/README.md) |
+面向已有英语基础孩子的离线 Android TV 应用：完成词汇学习与错题订正，兑换一轮观看时间。家长用 PIN 管理学习计划和每日额度，孩子用电视遥控器完成全部操作。
 
-各应用的权限、生命周期和用途不同，保持独立安装、升级和卸载。当前没有共享业务代码，因此只共用构建工具；暂不增加公共代码模块或引入 Gradle。
+项目仅包含一个 APP，原创代码与文档采用 [MIT](LICENSE) 协议。
 
-## 目录结构
+## 看看界面
 
-```text
-MyTV/
-├── apps/
-│   ├── bilistart/
-│   │   ├── AndroidManifest.xml
-│   │   ├── src/
-│   │   ├── README.md
-│   │   └── build/              # 构建产物，不入库
-│   ├── mictest/             # 独立麦克风诊断应用
-│   └── english/
-│       ├── AndroidManifest.xml
-│       ├── src/
-│       ├── res/
-│       ├── tests/
-│       ├── README.md
-│       ├── VALIDATION.md
-│       └── build/              # 构建产物，不入库
-├── build/                      # 本地签名密钥，不入库
-├── build.ps1                   # 两个应用共用的构建入口
-└── README.md
-```
+小米电视真实截图，使用隔离演示记录，不包含孩子的个人学习数据。
 
-## 构建
+| 学习首页 | 学习与订正 |
+| --- | --- |
+| ![学习首页](docs/screenshots/home.png) | ![学习页](docs/screenshots/lesson.png) |
+| 探险地图 | 学习记录 |
+| ![KET 探险地图](docs/screenshots/map.png) | ![成长概览和七日图表](docs/screenshots/progress.png) |
 
-需要 JDK 17、Android SDK Platform 35 和 Build Tools 35.0.0。SDK 默认位于 `%LOCALAPPDATA%\Android\Sdk`。在仓库根目录执行：
+<img src="docs/screenshots/parent-settings.png" alt="家长配置" width="720">
+
+## 功能与适用环境
+
+- **离线课程**：KET/PET 共 4,815 个阶段内学习项，配有中文释义、例句或词义卡、3,187 份去重发音。两个阶段有重合，不应相加当作独立词汇量。
+- **学习换时间**：默认每轮 5 项主任务，集中订正后兑换 10 分钟；每日最多实际观看 60 分钟。已有余额不叠加，跨日旧余额清零。
+- **实际播放计时**：结合播放器页面、屏幕与媒体音频状态计时，暂停、浏览、待机和学习期间不扣时；余额耗尽后显示学习页。
+- **持续学习**：任务自动保存，记录首次作答与错题，按 1、3、7、14、30 天间隔复习，提供地图、词卡和学习记录。
+- **家长配置**：四位 PIN 保护任务数、兑换分钟、每日上限、课程阶段、新词数量和发音设置。
+
+需要 Android 8.0（API 26）或以上的电视／盒子及遥控器。观看管控目前仅适配已安装的 **云视听小电视**（`com.xiaodianshi.tv.yst`），本项目不提供播放器。独立英语学习可以离线使用。
+
+实测为 MiTV-MFTR0 / Android 14、播放器 1.8.9；其他固件需验证。无障碍授权保留时可在开机后重连，部分小米固件待机会强停第三方 APP 并撤销授权，唤醒后需重新开启，普通 APP 无法自行恢复。Home 与系统设置仍可使用，本应用不是设备锁定工具。
+
+课程与发音尚未完成逐条人工教学审校，详见[内容说明](docs/CONTENT.md)。
+
+## 安装：人工先开启电视 ADB
+
+电脑与电视连接同一可信局域网，准备电视地址与调试端口。
+
+**小米电视／盒子**：进入「设置 → 关于」，在「产品型号」连续确认 7 次，开启开发者选项；再到「账号与安全」或固件对应的开发者设置允许「ADB 调试」。入口随固件变化，参见[小米官方说明](https://www.mi.com/ph/support/article/KA-06513/)。
+
+**Android TV／Google TV**：进入「设置 → 系统／设备偏好设置 → 关于」，在「Android TV 操作系统版本／版本号」连续确认，直到提示成为开发者；返回开发者选项开启 USB 或无线调试。[Android 官方说明](https://developer.android.com/training/tv/get-started/create)
+
+1. 在网络设置查看 IP。传统网络 ADB 常使用 `5555`，以实际开放端口为准；仅开启 USB 调试不保证网络 ADB 开放，必要时使用 USB 连接。
+2. 提供「无线调试 → 使用配对码配对」的电视，需要记录配对地址、配对码和连接地址；两个端口可能不同。
+3. 首次连接时，在电视上允许该电脑的调试授权。只向可信设备开放 ADB。[ADB 官方指引](https://developer.android.com/tools/adb)
+
+随后交给可以操作电脑 ADB 的 Agent：
+
+> 阅读本仓库 `docs/DEPLOYMENT-AGENT.md`，部署学后看正式版。GitHub 仓库是 `<OWNER/REPO>`，设备是 `<电视IP:连接端口或USB序列号>`，播放器已安装。保留现有数据及其他无障碍服务，完成安装、授权和验收。
+
+GitHub Actions 仅在推送版本标签时构建并发布到所属仓库 **Releases**，附 `SHA256SUMS`。标签必须是小写 `v` 加版本号（如 `v1.5.0`），并与应用版本一致；分支推送和 PR 不触发构建。尚未配置远端时可用本地正式产物，见[构建发布说明](docs/BUILDING.md)。
+
+**1.5.0 的新包名为 `dev.learnthenwatch.tv`**。旧版记录、PIN 和授权不自动迁移，需重新设置；启用新版前停用旧版对应管控服务，避免双重管控。
+
+## 开始使用
+
+1. 打开「学后看」，设置并确认四位家长 PIN；没有云端找回，请妥善保存。
+2. 在「家长配置」调整学习计划、阶段、起点、发音和额度，默认也可直接使用。
+3. 开启无障碍服务「学后看 · 观看管控」，回到「监控检查」确认已连接。
+4. 完成主任务和订正，确认「继续观看」。以后从保存的进度继续。
+
+| 按键 | 普通页面 | 学习与词卡 |
+| --- | --- | --- |
+| 上／下 | 移动卡片或设置焦点 | 选择答案或「不认识」 |
+| 左 | 进入侧栏 | 重听，保留答案焦点 |
+| 右 | 回到内容区 | 答后下一题；未作答时记为「不认识」 |
+| 确认 | 打开卡片或调整设置 | 提交答案；词卡内重听 |
+| 返回 | 按入口逐页回退 | 保存任务并离开；观看拦截中返回会退出观看 |
+
+任务数与兑换分钟在下一轮生效，降低日上限立即裁剪余额。达到上限仍可学习，但不再发放当天观看时间；演示模式不记录学习或发奖。
+
+## 开发与文档
+
+需要 JDK 17、Android SDK Platform 35、Build Tools 35.0.0：
 
 ```powershell
-.\build.ps1 -App bilistart
-.\build.ps1 -App english
-.\build.ps1 -App mictest
-.\build.ps1 -App all
+.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+python tools/validate_curriculum.py
 ```
 
-不带参数仍构建开机启动应用；原来的 `.\build.ps1 -English` 也继续支持。
+调试包 `dev.learnthenwatch.tv.debug` 可与正式版并存。
 
-输出位置：
+| 文档 | 内容 |
+| --- | --- |
+| [构建与发布](docs/BUILDING.md) | 环境、签名、Secrets、标签与输出 |
+| [Agent 部署](docs/DEPLOYMENT-AGENT.md) | 下载、校验、安装、授权与验收 |
+| [课程说明](docs/CONTENT.md) | 来源、覆盖、音频与内容复现 |
+| [验证记录](docs/VALIDATION.md) | 实测范围和固件限制 |
+| [贡献指南](CONTRIBUTING.md) / [更新记录](CHANGELOG.md) | 维护约定与版本变化 |
+| [隐私说明](PRIVACY.md) / [第三方声明](THIRD_PARTY_NOTICES.md) | 本地数据、权限与素材许可 |
 
-- 开机启动：`apps/bilistart/build/bilistart.apk`
-- 英语答题：`apps/english/build/englishquiz.apk`
-
-各应用沿用根目录的 `build/local-signing.jks`。请保留并备份此密钥，覆盖安装时需要使用同一签名；密钥不存在时脚本会自动创建本地密钥。
-
-英语应用的测试命令见[应用文档](apps/english/README.md#检查与测试)，电视实测范围见[验证记录](apps/english/VALIDATION.md)。
+本项目与 Cambridge、哔哩哔哩或电视厂商无隶属或授权背书关系，第三方素材保留各自许可与署名。

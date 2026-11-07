@@ -1,0 +1,5 @@
+# Optional course regeneration and exhaustive MP3 decoding, not APK builds.
+requests>=2.32,<3
+PyMuPDF>=1.25,<2
+opencc-python-reimplemented==0.1.7
+imageio-ffmpeg>=0.6,<1
