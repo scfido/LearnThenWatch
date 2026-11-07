@@ -64,6 +64,9 @@ final class RemoteUiChecks {
         key(KeyEvent.KEYCODE_BACK); checkPage("unit"); checkFocus(wordFocus);
         key(KeyEvent.KEYCODE_BACK); checkPage("map"); checkFocus("map:unit:60");
         check(route().scroll > 0, "map return retains a scrolled destination");
+        key(KeyEvent.KEYCODE_DPAD_UP); key(KeyEvent.KEYCODE_DPAD_UP); key(KeyEvent.KEYCODE_DPAD_UP); settle(300);
+        checkFocus("map:unit:0");
+        check(((android.widget.ScrollView) field(activity, "scroll")).getScrollY() == 0, "first card restores entire page header");
         key(KeyEvent.KEYCODE_BACK); checkPage("home");
 
         // A normal answer selection keeps its focus when left is used to replay.
@@ -77,9 +80,9 @@ final class RemoteUiChecks {
         key(KeyEvent.KEYCODE_DPAD_UP); checkFocus("study:option:2");
         Task mainTask = repository.currentTask(repository.currentSession().id);
         for (int n = 2; n > mainTask.correct; n--) key(KeyEvent.KEYCODE_DPAD_UP);
-        key(KeyEvent.KEYCODE_DPAD_CENTER); settle(850);
+        key(KeyEvent.KEYCODE_DPAD_CENTER); settle(1150);
         Task listening = repository.currentTask(repository.currentSession().id);
-        check("LISTEN".equals(listening.type), "automatic transition reaches listening without a playback button");
+        check("LISTEN".equals(listening.type), "correct answer automatically reaches listening");
         for (int n = 0; n < 24 && !enabled("study:option:0"); n++) settle(100);
         if (enabled("study:option:0")) {
             key(KeyEvent.KEYCODE_DPAD_DOWN); checkFocus("study:option:1");
@@ -87,10 +90,16 @@ final class RemoteUiChecks {
             key(KeyEvent.KEYCODE_DPAD_LEFT); settle(180); checkFocus("study:option:1");
             check(repository.snapshot().totalAnswered == before + 1, "failed replay after listening never submits an answer or steals focus");
             silent.volume = savedVolume; repository.saveSettings(silent);
+            int unknownBefore = repository.snapshot().totalAnswered;
+            key(KeyEvent.KEYCODE_DPAD_RIGHT);
+            check(repository.snapshot().totalAnswered == unknownBefore + 1, "right without confirming records unknown");
+            check(repository.snapshot().firstCorrect == before + 1, "unknown does not count as an independent correct answer");
+            check(enabled("study:advance"), "unknown displays explanation before next task");
+            key(KeyEvent.KEYCODE_DPAD_RIGHT); settle(300);
         }
         key(KeyEvent.KEYCODE_BACK); checkPage("home"); checkFocus("home:learn");
 
-        seedLearning(); menu("records"); checkFocus("records:review"); key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("review");
+        seedLearning(); menu("records"); checkFocus("records:review"); save("records"); key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("review");
         String reviewFocus = focusTag(); key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("word");
         key(KeyEvent.KEYCODE_BACK); checkPage("review"); checkFocus(reviewFocus);
         key(KeyEvent.KEYCODE_BACK); checkPage("records"); checkFocus("records:review");

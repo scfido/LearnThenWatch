@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.mytv.english" android:versionCode="4" android:versionName="1.2.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.mytv.english" android:versionCode="6" android:versionName="1.3.1">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="28" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />

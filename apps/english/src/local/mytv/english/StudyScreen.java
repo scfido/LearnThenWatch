@@ -23,7 +23,7 @@ import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** A bounded TV canvas: one choice per question, automatic success transitions, no scrolling. */
+/** A bounded TV canvas: confirm to answer, left to replay, right to continue, no scrolling. */
 public final class StudyScreen {
     private final Context context;
     private final StudyRepository repository;
@@ -38,9 +38,11 @@ public final class StudyScreen {
     private StudyModels.Task active;
     private LinearLayout page, body, left, choices, footer;
     private TextView status;
-    private Button secondary;
-    private Runnable replayAction;
-    private boolean advancing, replayThenAdvance;
+    private Button secondary, replayButton;
+    private boolean autoAdvance;
+    private final Runnable autoNext = this::transitionNext;
+    private Runnable replayAction, nextAction;
+    private boolean transitioning;
     private AdventureArt companion;
     private boolean closed, paused, submitting, heard, audioFailed;
     private long generation, keyGeneration = -1;
@@ -55,13 +57,20 @@ public final class StudyScreen {
         root = new FrameLayout(context) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 int key = event.getKeyCode();
+                if (key == KeyEvent.KEYCODE_DPAD_RIGHT && review == null && active != null) {
+                    if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 && !transitioning) {
+                        if (nextAction != null) nextAction.run();
+                        else if (!submitting) answer(active, (active.correct + 1) % active.options.length, true);
+                    }
+                    return true;
+                }
                 if (key == KeyEvent.KEYCODE_BACK) {
                     if (event.getAction() == KeyEvent.ACTION_UP) { pauseAudio(); onExit.run(); }
                     return true;
                 }
+                if (transitioning) return true;
                 if (key == KeyEvent.KEYCODE_DPAD_LEFT && replayAction != null) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                        if (advancing) { handler.removeCallbacksAndMessages(null); replayThenAdvance = true; }
                         replayAction.run();
                     }
                     return true;
@@ -102,7 +111,7 @@ public final class StudyScreen {
     }
     private void reset(String label, int done, int total) {
         generation++; handler.removeCallbacksAndMessages(null); audio.stop();
-        replayAction = null; advancing = false; replayThenAdvance = false;
+        replayAction = null; nextAction = null; transitioning = false; autoAdvance = false; secondary = null; replayButton = null;
         root.removeAllViews(); answers.clear(); active = null; submitting = false; heard = false; audioFailed = false;
         page = TvTheme.column(context); page.setPadding(dp(30), dp(18), dp(30), dp(18));
         root.addView(page, new FrameLayout.LayoutParams(-1, -1));
@@ -129,6 +138,7 @@ public final class StudyScreen {
         LinearLayout.LayoutParams bottom = new LinearLayout.LayoutParams(-1, dp(54)); bottom.topMargin = dp(12);
         page.addView(footer, bottom);
         status = fit("", 18, 15); status.setTag("study:audio-status"); status.setTextColor(TvTheme.MUTED);
+        status.setVisibility(View.INVISIBLE);
         footer.addView(status, new LinearLayout.LayoutParams(0, -1, 1));
         TvTheme.enter(body);
     }
@@ -192,10 +202,10 @@ public final class StudyScreen {
             choices.addView(option, slot); answers.add(option); option.setEnabled(!listening);
         }
         addReplay(value, listening);
-        secondary = footerButton(task.correction ? "看提示" : "不认识", false, () -> answer(task, (task.correct + 1) % task.options.length, true), 134);
+        secondary = footerButton(task.correction ? "看提示 →" : "不认识 →", false, () -> answer(task, (task.correct + 1) % task.options.length, true), 150);
         secondary.setTag("study:unknown"); secondary.setEnabled(!listening);
         verticalChoices();
-        status.setText(task.correction ? "← 重听 · 再试一次" : "← 重听");
+        status.setText("← 重听 · → 不认识");
         if (!listening) answers.get(0).requestFocus(); else root.requestFocus();
         if (repository.settings().autoSpeak || listening) play(value, listening);
     }
@@ -218,7 +228,10 @@ public final class StudyScreen {
     }
     private void addReplay(Curriculum.Item value, boolean required) {
         replayAction = () -> play(value, required);
-        if (status.getText().length() == 0) status.setText("← 重听");
+        replayButton = footerButton("← 重听", false, () -> replayAction.run(), 150);
+        replayButton.setTag("study:replay");
+        // The left key invokes this shortcut directly; keep answer navigation on the right-hand action.
+        replayButton.setFocusable(false);
     }
     private void verticalChoices() {
         for (int n = 0; n < answers.size(); n++) {
@@ -231,19 +244,22 @@ public final class StudyScreen {
     }
     private void play(Curriculum.Item value, boolean required) {
         final long token = generation;
+        if (autoAdvance) handler.removeCallbacks(autoNext);
+        if (replayButton != null) replayButton.setText("← 播放中");
         status.setText("♪ … · ← 重听");
         audio.play(value.audio, repository.settings().volume, success -> {
             if (closed || paused || token != generation) return;
-            status.setText(success ? (review != null ? "← / 确认 重听" : "← 重听") : "发音不可用 · ← 重试");
+            if (replayButton != null) replayButton.setText(success ? "← 重听" : "← 重试");
+            status.setText(success ? (review != null ? "← / 确认 重听" : nextAction != null ? "← 重听 · → 下一个" : "← 重听 · → 不认识") : "发音不可用 · ← 重试");
             if (success && required && !submitting) {
                 heard = true; audioFailed = false;
                 for (Button answer : answers) answer.setEnabled(true);
-                if (secondary != null) { secondary.setEnabled(true); secondary.setText(active.correction ? "看提示" : "不认识"); }
+                if (secondary != null) { secondary.setEnabled(true); secondary.setText(active.correction ? "看提示 →" : "不认识 →"); }
                 if (root.findFocus() == root || root.findFocus() == null) answers.get(0).requestFocus();
             } else if (!success && required && !submitting && !heard) {
-                audioFailed = true; secondary.setEnabled(true); secondary.setText("换文字题"); secondary.requestFocus();
+                audioFailed = true; secondary.setEnabled(true); secondary.setText("换文字题 →"); secondary.requestFocus();
             }
-            if (replayThenAdvance) { replayThenAdvance = false; later(this::render, 300); }
+            if (autoAdvance) handler.postDelayed(autoNext, 400);
         });
     }
     private void answer(StudyModels.Task task, int choice, boolean unknown) {
@@ -270,8 +286,11 @@ public final class StudyScreen {
                 TvTheme.buttonStyle(selected, TvTheme.MINT, TvTheme.TEAL, 3); selected.setTextColor(TvTheme.TEAL);
                 selected.setText("✓  " + task.options[choice]); selected.setAlpha(.6f); selected.animate().alpha(1).setDuration(180).start();
                 status.setText("答对啦！"); status.setTextColor(TvTheme.TEAL); companion.happy();
-                advancing = true;
-                later(this::render, 620);
+                status.setText("答对啦！ · → 下一个");
+                nextAction = this::transitionNext;
+                secondary.setText("下一个 →"); secondary.setEnabled(true);
+                secondary.setOnClickListener(v -> transitionNext());
+                autoAdvance = true; handler.postDelayed(autoNext, 900);
             } else {
                 detail(item(task));
                 for (int n = 0; n < answers.size(); n++) {
@@ -282,17 +301,27 @@ public final class StudyScreen {
                 clearFooter(unknown ? "← 重听 · 一起记住它" : "← 重听 · 再记一下");
                 addReplay(item(task), false);
                 boolean guided = !demo && task.correction && repository.currentTask(session.id).correctionAttempts >= 2;
-                Button next = footerButton(guided || !task.correction ? "记住了" : "再试一次", true, () -> {
+                nextAction = () -> {
                     if (guided) try { repository.confirmGuidedCorrection(session.id, task.id); } catch (RuntimeException e) { failure(e); return; }
-                    render();
-                }, 162); next.setTag("study:advance"); next.requestFocus();
+                    transitionNext();
+                };
+                status.setText("← 重听 · → 下一个");
+                Button next = footerButton(guided || !task.correction ? "记住了  →" : "再试一次  →", true, () -> nextAction.run(), 162); next.setTag("study:advance"); next.requestFocus();
                 left.setTranslationX(-dp(5)); left.animate().translationX(0).setDuration(170).start();
             }
         } catch (RuntimeException error) { failure(error); }
     }
     private void clearFooter(String text) {
         footer.removeAllViews(); status = fit(text, 18, 15); status.setTag("study:audio-status"); status.setTextColor(TvTheme.MUTED);
+        status.setVisibility(View.INVISIBLE);
         footer.addView(status, new LinearLayout.LayoutParams(0, -1, 1));
+    }
+    private void transitionNext() {
+        if (transitioning || closed || paused) return;
+        transitioning = true; autoAdvance = false; handler.removeCallbacks(autoNext); audio.stop();
+        body.animate().cancel();
+        body.animate().alpha(0).translationX(-dp(26)).setDuration(140).start();
+        later(this::render, 150);
     }
     private void detail(Curriculum.Item value) {
         left.removeAllViews(); left.setBackground(TvTheme.shape(context, TvTheme.WHITE, TvTheme.LINE, 1, 24));
@@ -314,10 +343,12 @@ public final class StudyScreen {
         AdventureArt partner = new AdventureArt(context); partner.happy(); choices.addView(partner, new LinearLayout.LayoutParams(-1, 0, 1));
         fixedText(choices, "一起记住它", 26, 22, 64);
         clearFooter(""); addReplay(item(task), false);
-        Button confirm = footerButton("我记住了", true, () -> {
+        nextAction = () -> {
             if (submitting) return; submitting = true;
-            try { repository.confirmGuidedCorrection(session.id, task.id); render(); } catch (RuntimeException e) { failure(e); }
-        }, 170); confirm.setTag("study:advance"); confirm.requestFocus();
+            try { repository.confirmGuidedCorrection(session.id, task.id); transitionNext(); } catch (RuntimeException e) { failure(e); }
+        };
+        status.setText("← 重听 · → 下一个");
+        Button confirm = footerButton("我记住了  →", true, () -> nextAction.run(), 170); confirm.setTag("study:advance"); confirm.requestFocus();
     }
     private void later(Runnable action, int delay) {
         final long token = generation;

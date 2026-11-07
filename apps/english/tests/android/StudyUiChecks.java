@@ -69,22 +69,28 @@ final class StudyUiChecks {
         attach(create(false, null), 960, 540);
         check(repository.currentTask(repository.currentSession().id).needsIntro == false, "no separate new-word confirmation page");
         validate(); save("question");
+        check(((Button) find("study:replay")).getText().toString().equals("← 重听"), "replay shortcut has a left arrow");
+        check(((Button) find("study:unknown")).getText().toString().equals("不认识 →"), "unknown shortcut has a right arrow");
+        check(find("study:audio-status").getVisibility() != View.VISIBLE, "bottom-left instructional text is hidden");
+        check(find("study:replay").getLeft() > screen.view().getWidth() / 2, "shortcut buttons sit at bottom right");
 
         click("study:unknown"); settle(230);
         check(repository.snapshot().totalAnswered == 1 && repository.snapshot().firstCorrect == 0, "unknown is recorded honestly");
         check(find("study:advance") != null, "incorrect answer has one acknowledgement"); validate(); save("explanation");
         click("study:advance"); settle(250);
         // Deliberately missing audio must offer a same-item text fallback, never silently complete it.
-        check(((Button) find("study:unknown")).getText().toString().equals("换文字题"), "audio failure has a visible fallback");
+        check(((Button) find("study:unknown")).getText().toString().equals("换文字题 →"), "audio failure has a visible fallback");
         click("study:unknown"); settle(230);
         Session session = repository.currentSession(); Task second = repository.currentTask(session.id);
         check(second.type.equals("WORD") && repository.snapshot().totalAnswered == 1, "fallback preserves uncompleted task");
         click("study:option:" + second.correct);
         check(find("study:advance") == null, "correct answers do not require a continue button");
-        settle(880);
+        settle(300);
+        check(find("study:option:" + second.correct) != null, "answer feedback briefly remains before automatic next");
+        settle(850);
         Task third = repository.currentTask(session.id);
         check(!third.id.equals(second.id), "correct answer automatically advances"); validate(); save("sentence");
-        click("study:option:" + third.correct); settle(880);
+        click("study:option:" + third.correct); right(); settle(280);
         Task correction = repository.currentTask(session.id);
         check(correction.correction, "main tasks flow directly into corrections");
         click("study:unknown"); click("study:advance"); settle(220);
@@ -97,7 +103,7 @@ final class StudyUiChecks {
         check("已完成 3 / 3".contentEquals(find("study:progress").getContentDescription()), "completion progress follows configured task count");
         click("study:finish"); click("study:finish"); check(finished == 1, "repeated finish click invokes viewing once");
 
-        // Pausing during an automatic transition must invalidate its callback; resume re-reads the persisted task.
+        // Pausing on answer feedback resumes from the persisted next task.
         attach(create(false, null), 960, 540);
         session = repository.currentSession(); Task current = repository.currentTask(session.id);
         click("study:option:" + current.correct);
@@ -148,6 +154,12 @@ final class StudyUiChecks {
         });
     }
     private void settle(int ms) { SystemClock.sleep(ms); main(() -> { }); }
+    private void right() {
+        main(() -> {
+            screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT));
+            screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT));
+        });
+    }
     private void validate() {
         main(() -> {
             check(screen.view().getWidth() > 0 && screen.view().getHeight() > 0, "screen is measured on TV");

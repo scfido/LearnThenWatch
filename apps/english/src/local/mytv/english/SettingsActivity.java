@@ -99,6 +99,9 @@ public final class SettingsActivity extends Activity {
         }
         if (study == null && event.getAction() == KeyEvent.ACTION_DOWN && !menu.isEmpty()) {
             View focus = getCurrentFocus();
+            if (key == KeyEvent.KEYCODE_DPAD_UP && !targets.isEmpty() && focus == targets.get(0) && scroll != null) {
+                scroll.scrollTo(0, 0); return true;
+            }
             if (key == KeyEvent.KEYCODE_DPAD_LEFT && focus != null && !menu.contains(focus)) {
                 navigation.current().contentFocus = tag(focus);
                 View active = menuByName.get(section()); if (active != null) { active.requestFocus(); return true; }
@@ -204,7 +207,13 @@ public final class SettingsActivity extends Activity {
             menuItem(nav, "学习记录", "records"); menuItem(nav, "家长配置", "parent");
             root.addView(nav, new LinearLayout.LayoutParams(dp(168), -1));
         }
-        scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setClipChildren(false); scroll.setClipToPadding(false);
+        scroll = new ScrollView(this) {
+            @Override public void requestChildFocus(View child, View focused) {
+                super.requestChildFocus(child, focused);
+                // Android normally reveals only the first card, leaving the nonfocusable title above it hidden.
+                if (!targets.isEmpty() && focused == targets.get(0)) post(() -> scrollTo(0, 0));
+            }
+        }; scroll.setSmoothScrollingEnabled(false); scroll.setFillViewport(true); scroll.setClipChildren(false); scroll.setClipToPadding(false);
         content = TvTheme.column(this); content.setPadding(dp(modal ? 96 : 10), dp(4), dp(modal ? 96 : 10), dp(18));
         content.addView(TvTheme.title(this, title, 30));
         if (subtitle != null && !subtitle.isEmpty()) TvTheme.add(content, TvTheme.text(this, subtitle, 17, TvTheme.MUTED), 5);
@@ -329,9 +338,10 @@ public final class SettingsActivity extends Activity {
     }
     private void records() {
         StudyModels.Snapshot state = repository.snapshot(); shell("我的学习足迹", "");
-        tile("records:review", "待复习与错题  ›", "已学 " + state.learnedCount + " · 已掌握 " + state.masteredCount + " · 待复习 " + state.dueCount, () -> go(new Screen("review")));
-        for (StudyModels.DayStats day : repository.history()) tile("records:day:" + day.day, day.day,
-                "观看 " + TvTheme.duration(day.usedMs) + " · 完成 " + day.rounds + " 轮 · 新学 " + day.newCount + "\n首次正确率 " + percent(day.firstCorrect, day.totalAnswered), null);
+        LinearLayout overview = tile("records:review", "我的成长 · 复习与错题  ›", "", () -> go(new Screen("review")));
+        overview.addView(new LearningCharts(this, state), new LinearLayout.LayoutParams(-1, dp(110)));
+        LinearLayout week = tile("records:week", "最近 7 天", "", null);
+        week.addView(new LearningCharts(this, repository.history(), state.day), new LinearLayout.LayoutParams(-1, dp(160)));
     }
     private void reviewList() {
         shell("待复习与错题", ""); boolean found = false;
@@ -341,7 +351,6 @@ public final class SettingsActivity extends Activity {
         }
         if (!found) TvTheme.add(content, TvTheme.text(this, "暂时没有待复习词汇", 22, TvTheme.MUTED), 24);
     }
-    private static String percent(int correct, int total) { return total == 0 ? "—" : Math.round(correct * 100f / total) + "%"; }
 
     private interface Change { void apply(AppSettings settings); }
     private static int cycle(int value, int[] values) { for (int n = 0; n < values.length; n++) if (values[n] == value) return values[(n + 1) % values.length]; return values[0]; }
