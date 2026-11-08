@@ -77,14 +77,14 @@ Remove-Variable config
 ```
 
 2. 在 `gradle.properties` 更新版本名和递增的版本代码，在 `CHANGELOG.md` 添加对应 `## [版本]` 条目，提交并推送 `main`。
-3. 创建并推送版本标签。标签必须为小写 `v` 加三段数字版本号，例如 `v1.5.0`，且严格等于 `v` 加 `appVersionName`；不匹配会在构建前失败。只有标签推送会触发自动构建，分支推送、PR 和手动操作不触发。
+3. 创建并推送版本标签。标签必须为小写 `v` 加三段数字版本号，例如 `v1.5.1`，且严格等于 `v` 加 `appVersionName`；不匹配会在构建前失败。只有标签推送会触发自动构建，分支推送、PR 和手动操作不触发。
 
 ```powershell
-git tag -a v1.5.0 -m "LearnThenWatch v1.5.0"
-git push origin v1.5.0
+git tag -a v1.5.1 -m "LearnThenWatch v1.5.1"
+git push origin v1.5.1
 ```
 
-`Build and publish version tag` 先校验标签、版本和 CHANGELOG，再检查课程、运行 JUnit、构建并上传调试 APP、测试 APK 与测试报告；随后临时还原签名，构建和验签，发布正式 APK、`SHA256SUMS` 与 CHANGELOG 对应说明。仅发布任务有 `contents: write`，临时私钥始终清理，Actions 依赖固定到官方发布提交。
+`Build and publish version tag` 先校验标签、版本和 CHANGELOG，初始化 Android SDK，再检查课程、运行 JUnit、构建并上传调试 APP、测试 APK 与测试报告；随后临时还原签名，构建和验签，发布正式 APK、`SHA256SUMS` 与 CHANGELOG 对应说明。仅发布任务有 `contents: write`，临时私钥始终清理，Actions 依赖固定到发布提交。
 
 缺 Secrets、标签不符、签名密码错误或已有同名 Release 会报错。先定位失败步骤；不要换密钥重发同一包名，也不要自动覆盖公开附件。
 
@@ -92,7 +92,7 @@ git push origin v1.5.0
 
 ```powershell
 & "$env:ANDROID_HOME\build-tools\35.0.0\apksigner.bat" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
-python tools/prepare_release.py --tag v1.5.0
+python tools/prepare_release.py --tag v1.5.1
 ```
 
 SHA-256 用于检测文件损坏，安装还要检查证书，见 [Agent 手册](DEPLOYMENT-AGENT.md)。GitHub 的 [Secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) 和 [令牌权限](https://docs.github.com/en/actions/tutorials/authenticate-with-github_token) 以官方文档为准。
