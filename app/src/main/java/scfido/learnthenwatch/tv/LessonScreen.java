@@ -91,6 +91,9 @@ public final class LessonScreen {
         };
         root.setTag("study:root"); root.setBackgroundColor(TvUiTheme.CREAM);
         root.setFocusable(true); root.setFocusableInTouchMode(true);
+        // Overlay attachment requests focus again. Prefer an enabled answer/action;
+        // the root is only a fallback while listening or showing a buttonless page.
+        root.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
         root.setClipChildren(false); root.setClipToPadding(false);
         audio = new PronunciationPlayer(context); render();
     }

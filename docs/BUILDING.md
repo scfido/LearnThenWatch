@@ -43,6 +43,8 @@ python tools/capture_screenshots.py --device <DEVICE>
 python tools/check_playback_access.py --device <DEVICE> --skip-standby
 ```
 
+监控回归同时检查首次零余额拦截和观看时间耗尽后的答题焦点：默认选中第一个答案，遥控器下键选择第二个，上键返回第一个，移动焦点不提交答案。添加 `--screenshots-dir build/device-checks/focus` 可保存时间耗尽后的答案焦点图，供视觉检查；测试在电视上绘制当前已布局的覆盖层视图，避免播放器受保护画面导致系统截图失败，且仅使用隔离测试记录。
+
 `run_device_checks.py --suite sqlite|ui|remote` 可分别运行。测试使用隔离数据库、偏好与 PIN，不更改电视日期；临时停用冲突的学习管控服务，保留其他服务，结束时恢复原列表和无障碍总开关。不要并行运行设备工具。电脑进程被强杀时，应核对并恢复原无障碍列表。
 
 截图工具生成五张画面至 `docs/screenshots`，使用演示记录，结束后删除演示数据。监控检查会实际播放、暂停和切换 Home，应在[已验证的兼容环境](VALIDATION.md)运行；页面变化可能影响自动选片。当前小米固件待机会强停进程，使用 `--skip-standby`；普通待机恢复只在确认支持的固件上验收。
@@ -85,6 +87,8 @@ git push origin v1.5.3
 ```
 
 `Build and publish version tag` 先校验标签、版本和 CHANGELOG，初始化 Android SDK，再检查课程、运行 JUnit、构建并上传调试 APP、测试 APK 与测试报告；随后临时还原签名，构建和验签，发布正式 APK、`SHA256SUMS` 与 CHANGELOG 对应说明。仅发布任务有 `contents: write`，临时私钥始终清理，Actions 依赖固定到发布提交。
+
+Android SDK 初始化使用 `android-actions/setup-android` v4.0.4（Node.js 24 运行时），安装 Platform 35 和 Build Tools 35.0.0。Node.js 仅用于运行构建辅助 Action，电视 APP 仍使用 Java。
 
 工作流通过 `tools/cache_gradle.py` 准备 Wrapper 缓存，优先从 Gradle 官方源下载，失败后尝试华为云、腾讯云镜像。所有来源都必须匹配 `gradle-wrapper.properties` 固定的官方 SHA-256；校验失败的文件不会用于构建。
 

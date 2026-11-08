@@ -4,6 +4,7 @@ Uses adb rather than UiAutomation, which disconnects enabled accessibility servi
 The signed instrumentation owns only isolated database/preferences and reports each checkpoint.
 """
 import argparse
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -17,6 +18,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--device", required=True)
 parser.add_argument("--package", default="scfido.learnthenwatch.tv.debug", choices=["scfido.learnthenwatch.tv.debug"])
 parser.add_argument("--skip-standby", action="store_true", help="Explicitly exclude firmware standby that force-stops third-party apps")
+parser.add_argument("--screenshots-dir", type=Path, help="Save isolated expiry-gate focus screenshots for visual inspection")
 args = parser.parse_args()
 prefix = ["adb", "-s", args.device]
 monitor = args.package + "/scfido.learnthenwatch.tv.PlaybackAccessService"
@@ -45,6 +47,19 @@ def command(value):
 
 def key(value):
     adb("shell", "input", "keyevent", value)
+
+
+def capture_focus(name):
+    if not args.screenshots_dir:
+        return
+    time.sleep(.3)
+    args.screenshots_dir.mkdir(parents=True, exist_ok=True)
+    path = args.screenshots_dir / name
+    # The test draws its actual overlay view; protected player surfaces can block screencap.
+    command("capture_focus")
+    adb("pull", "/sdcard/Android/data/" + args.package + "/cache/monitor-focus.png", str(path))
+    if path.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
+        raise RuntimeError("Invalid focus screenshot: " + str(path))
 
 
 def power(awake):
@@ -109,6 +124,16 @@ try:
                 player()
             elif event == "PAUSE":
                 key("KEYCODE_DPAD_CENTER"); command("paused")
+            elif event in ("INITIAL_DOWN", "EXPIRED_DOWN"):
+                key("KEYCODE_DPAD_DOWN")
+                if event == "EXPIRED_DOWN":
+                    capture_focus("expired-answer-b.png")
+                command("down")
+            elif event in ("INITIAL_UP", "EXPIRED_UP"):
+                key("KEYCODE_DPAD_UP")
+                if event == "EXPIRED_UP":
+                    capture_focus("expired-answer-a.png")
+                command("up")
             elif event == "SLEEP":
                 power(False); command("asleep")
             elif event == "WAKE":

@@ -5,6 +5,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -14,6 +16,8 @@ import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import java.io.InputStreamReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.lang.reflect.Field;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.BooleanSupplier;
@@ -36,9 +40,26 @@ final class PlaybackAccessServiceChecks {
         @Override public void onReceive(Context c, Intent i) {
             if (!ACTION.equals(i.getAction())) return;
             String command = i.getStringExtra("command");
-            if ("open_video".equals(command)) openVideo(); else if (command != null) commands.add(command);
+            if ("open_video".equals(command)) openVideo();
+            else if ("capture_focus".equals(command)) captureFocus();
+            else if (command != null) commands.add(command);
         }
     };
+
+    private void captureFocus() {
+        try {
+            PlaybackAccessService service = PlaybackAccessService.instance;
+            if (!installed || service == null) return;
+            View overlay = (View) serviceGate.get(service);
+            if (overlay == null) return;
+            // Draw the actual laid-out overlay: secure player surfaces can block screencap.
+            Bitmap image = Bitmap.createBitmap(overlay.getWidth(), overlay.getHeight(), Bitmap.Config.ARGB_8888);
+            try (FileOutputStream output = new FileOutputStream(new File(context.getExternalCacheDir(), "monitor-focus.png"))) {
+                overlay.draw(new Canvas(image));
+                image.compress(Bitmap.CompressFormat.PNG, 100, output);
+            } finally { image.recycle(); }
+        } catch (Exception error) { throw new IllegalStateException("Could not capture isolated gate focus", error); }
+    }
 
     private void openVideo() {
         PlaybackAccessService service = PlaybackAccessService.instance;
@@ -109,6 +130,7 @@ final class PlaybackAccessServiceChecks {
         settle(1000); long beforeSamples = samples(); settle(3100);
         check(samples() - beforeSamples <= 5, "reconnect and settings bursts leave one periodic poll chain");
         check(repo.snapshot().balanceMs == 0 && repo.snapshot().todayUsedMs == 0, "reconnect grants and charges no time");
+        checkAnswerNavigation("INITIAL");
         phase("GATE_VISIBLE", "Real overlay attached; awarding one isolated learning round");
         Session finished = repo.ensureSession(); Task task; int guard = 0;
         while ((task = repo.currentTask(finished.id)) != null) {
@@ -149,6 +171,7 @@ final class PlaybackAccessServiceChecks {
         await(() -> gate() != null, 8000, "actual playback exhausts a short balance and shows learning");
         check(repo.snapshot().balanceMs == 0, "expiry is based on persisted zero balance");
         check(SystemClock.elapsedRealtime() - expiryStart < 6500, "gate appears within the one-second sampling tolerance");
+        checkAnswerNavigation("EXPIRED");
         String sessionId = repo.currentSession().id;
         phase("BACK", "Press Back on the learning overlay"); command("back");
         await(() -> gate() == null, 5000, "Back exits viewing and removes the overlay"); settle(1200);
@@ -166,6 +189,24 @@ final class PlaybackAccessServiceChecks {
         check(repo.currentSession().id.equals(sessionId) && repo.snapshot().balanceMs == 0, "system rebind retains task and balance");
         check(repo.snapshot().todayRounds == 1, "lifecycle events never issue duplicate rewards");
         phase("DONE", "All monitor assertions passed");
+    }
+    private void checkAnswerNavigation(String entry) {
+        await(() -> focused("study:option:0"), 5000, entry + " gate initially focuses the first answer");
+        int answered = repo.snapshot().totalAnswered;
+        phase(entry + "_DOWN", "Move to the second answer with a real D-pad key"); command("down");
+        await(() -> focused("study:option:1"), 3000, entry + " Down selects the second answer");
+        phase(entry + "_UP", "Move back to the first answer with a real D-pad key"); command("up");
+        await(() -> focused("study:option:0"), 3000, entry + " Up selects the first answer");
+        check(repo.snapshot().totalAnswered == answered, entry + " navigation does not submit an answer");
+    }
+    private boolean focused(String tag) {
+        final boolean[] result = new boolean[1];
+        View overlay = gate();
+        main(() -> {
+            View selected = overlay == null ? null : overlay.findFocus();
+            result[0] = selected != null && selected.hasWindowFocus() && tag.equals(selected.getTag());
+        });
+        return result[0];
     }
     private void command(String expected) {
         await(() -> expected.equals(commands.poll()), 45000, "driver command " + expected);
@@ -210,6 +251,7 @@ final class PlaybackAccessServiceChecks {
     private static Field field(Class<?> type, String name) throws Exception { Field f = type.getDeclaredField(name); f.setAccessible(true); return f; }
     private void close() throws Exception {
         if (registered) context.unregisterReceiver(receiver);
+        new File(context.getExternalCacheDir(), "monitor-focus.png").delete();
         if (installed) main(() -> {
             PlaybackAccessService s = PlaybackAccessService.instance;
             try {
