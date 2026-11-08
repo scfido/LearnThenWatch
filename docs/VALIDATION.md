@@ -29,9 +29,9 @@
 
 当前源码的正式包名为 `scfido.learnthenwatch.tv`，调试包为 `scfido.learnthenwatch.tv.debug`。包名调整后已通过干净构建、五组 JUnit、调试与设备测试 APK 构建、正式签名 APK 构建，并核对启动组件、无障碍配置及测试运行器标识。
 
-2026-11-08，[v1.5.1 云端构建](https://github.com/scfido/LearnThenWatch/actions/runs/42435879052)通过课程检查、五组 JUnit、调试及设备测试 APK 构建、正式 APK 构建和签名验证，并发布到 [Releases](https://github.com/scfido/LearnThenWatch/releases/tag/v1.5.1)。
+2026-11-08，[v1.5.3 云端构建](https://github.com/scfido/LearnThenWatch/actions/runs/42468599173)通过构建工具校验、课程检查、五组 JUnit、调试及设备测试 APK 构建、正式 APK 构建和签名验证，并发布到 [Releases](https://github.com/scfido/LearnThenWatch/releases/tag/v1.5.3)。
 
-下载发布附件后，已核对 SHA-256、正式证书、版本 `1.5.1` 与 versionCode `9`。全部构建记录见 [GitHub Actions](https://github.com/scfido/LearnThenWatch/actions/workflows/release.yml)。
+下载发布附件后，已核对 SHA-256、正式证书、包名 `scfido.learnthenwatch.tv`、版本 `1.5.3` 与 versionCode `11`。全部构建记录见 [GitHub Actions](https://github.com/scfido/LearnThenWatch/actions/workflows/release.yml)。
 
 ## 兼容性限制
 
