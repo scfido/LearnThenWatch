@@ -1,6 +1,8 @@
 # 学后看部署手册（供 Agent 执行）
 
-目标：只部署本项目的正式 APP，保留现有用户数据和其他系统服务。人工前置操作为 [README 的 ADB 开启与连接授权](../README.md)。云视听小电视应已安装；缺失时报告前置条件，不下载或安装播放器。
+本手册供 TRAE、腾讯 WorkBuddy、Codex、Claude Code、Cursor Agent 等电脑端智能体执行。家长需要完成的 ADB 开启、配对与授权操作见[安装指南](INSTALL.md)。
+
+操作范围为「学后看」正式 APP，保留电视上的其他应用、用户数据与系统服务。向家长说明问题时使用日常语言，明确下一步需要按哪个按钮或打开哪个页面。
 
 ## 输入与身份
 
@@ -23,7 +25,6 @@
 adb devices -l
 adb -s <DEVICE> get-state
 adb -s <DEVICE> shell getprop ro.build.version.sdk
-adb -s <DEVICE> shell pm path com.xiaodianshi.tv.yst
 adb -s <DEVICE> shell pm path dev.learnthenwatch.tv
 adb -s <DEVICE> shell settings get secure enabled_accessibility_services
 adb -s <DEVICE> shell settings get secure accessibility_enabled
@@ -31,7 +32,7 @@ adb -s <DEVICE> shell settings get secure accessibility_enabled
 
 只继续操作明确选定且状态为 `device`、API ≥ 26 的设备。`unauthorized` 时等待电视允许连接；`offline` 时检查网络、端口或重连；多设备时不能省略 `-s`。设备可能需要先唤醒，不能把关屏状态下的界面检查当作失败。
 
-保存原无障碍列表和总开关，列出是否有旧服务 `local.mytv.english/.LearningService` 或调试版管控服务。安装本身不改变该列表；配置新版前停用冲突的学习服务，保留其他服务和旧 APP 数据，不自行卸载旧应用。
+保存原无障碍列表和总开关，检查是否有本项目调试版管控服务。安装本身不改变该列表；启用正式服务时保留其他应用的服务和数据。
 
 ## 2. 下载、校验与验签
 
@@ -61,14 +62,14 @@ adb -s <DEVICE> shell am start -n dev.learnthenwatch.tv/dev.learnthenwatch.tv.Ma
 
 安装失败应解释原始错误。`INSTALL_FAILED_UPDATE_INCOMPATIBLE` 为签名冲突，`VERSION_DOWNGRADE` 为降级；两者均停止。磁盘不足时报告空间需求，不替用户删除数据。禁止 `pm clear`，不自动卸载重装。
 
-新包与旧 English 独立，首次没有旧记录或 PIN。由家长设置四位 PIN；如未提供 PIN，停在设置界面请家长直接输入，之后继续。已有 PIN 时不重置。按用户目标调整计划；未指定则保留 5 项任务／10 分钟奖励／60 分钟日上限与 KET 阶段。
+首次打开时由家长设置四位数字密码；停在设置界面请家长直接输入，之后继续。已有密码时不重置。按家长要求调整计划；未指定则保留 5 项任务／10 分钟奖励／60 分钟日上限与 KET 阶段。
 
 ## 4. 启用管控并保留其他服务
 
 优先从应用「家长配置 → 监控检查」进入电视无障碍设置，启用「学后看 · 观看管控」。已有 ADB 授权的设备若允许 shell 修改设置，可执行等价操作：
 
 1. **重新读取**当前无障碍列表，按冒号分隔为组件；`null` 或空值视为空列表。
-2. 只移除旧 English、新版调试服务等已确认冲突的学习管控组件，保留所有其他组件；使用组件的展开全名比对，避免误判短写形式。
+2. 若本项目调试版服务正在运行，在家长确认后停用该调试服务；保留其他应用的服务，使用组件的展开全名比对，避免误判短写形式。
 3. 若正式服务尚未存在，追加 `dev.learnthenwatch.tv/dev.learnthenwatch.tv.PlaybackAccessService`，去重后写回整张列表，再将 `accessibility_enabled` 设为 `1`。
 4. 回读确认，并观察服务是否实际连接。设置成功不等于服务已连上；需等待并查看应用实时状态或下面的诊断。
 
@@ -79,7 +80,7 @@ adb -s <DEVICE> shell dumpsys activity service dev.learnthenwatch.tv/dev.learnth
 adb -s <DEVICE> logcat -d -s LearnThenWatch:I
 ```
 
-发生配置失败时恢复保存的原列表与总开关，并报告当前实际状态。正常部署成功则保留正式服务与所有原有非冲突服务。旧应用仍保留，学习记录不迁移。
+发生配置失败时恢复保存的原列表与总开关，并报告当前实际状态。正常安装完成后保留正式服务和其他原有服务。
 
 ## 5. 验收与交付
 
@@ -87,8 +88,8 @@ adb -s <DEVICE> logcat -d -s LearnThenWatch:I
 
 1. 包名、版本、版本代码、APK SHA-256 和证书指纹符合预期；正式版不包含测试运行器。
 2. 应用可从电视桌面打开，遥控器可浏览首页、地图和家长配置；家长 PIN 保护有效。
-3. 监控检查明确显示服务已连接；目标播放器缺失、未设置 PIN、关闭管控等状态不能算成功。
-4. 经家长同意进行真实学习／播放验收：零余额进入播放页出现学习页，完成学习后获得一轮额度，实际播放扣时，暂停不扣时，Home 清理覆盖层。使用正式数据的学习和观看会产生真实记录，应提前说明。
+3. 家长需要观看时间管理时，监控检查应明确显示服务已连接；未设置密码、未授权或关闭管控等情况应说明当前状态。
+4. 经家长同意后，可在电视现有的兼容使用场景中验证学习换时、实际观看扣时、暂停不扣时以及 Home 清理学习页。该检查会产生真实学习和观看记录，应提前说明。
 5. 需要余额耗尽、事务或大量 UI 回归时，按 [构建文档](BUILDING.md) 使用调试包隔离测试，不修改孩子余额或正式数据库来加速测试。
 6. 如果没有进行真实播放或到时验收，明确写“未验收”，不能由服务连接推断全部闭环通过。完整重启、待机验证可能打断电视使用，仅在约定后操作。
 
