@@ -1,6 +1,6 @@
 # 更新记录
 
-## [Unreleased]
+## [1.5.2] - 2026-11-08
 
 - 应用包名与源码命名空间统一为 `scfido.learnthenwatch.tv`，调试包为 `scfido.learnthenwatch.tv.debug`。
 - 面向家长重写产品介绍，补充 KET/PET 词汇学习用途。
