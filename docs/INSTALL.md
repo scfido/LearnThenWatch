@@ -33,7 +33,7 @@ ADB 是让电脑连接电视的调试功能。先打开电视「设置」，按�
 
 进入开发者选项后，查看是否有「ADB 调试」「USB 调试」「网络调试」或「无线调试」开关。要通过家里网络连接，电视需要开放网络 ADB 或无线调试；只打开 USB 调试不一定能无线连接。
 
-入口参考：[小米官方说明](https://www.mi.com/ph/support/article/KA-06513/)、[索尼说明](https://pro.sony/s3/2019/07/25131224/TEOS-Pro-BRAVIA-Android-7-Installation-User-manual-1.0.pdf)、QuickTVUI 的 [TCL](https://www.quicktvui.com/zh-CN/guide/device/tcl.html)、[海信](https://www.quicktvui.com/zh-CN/guide/device/hisense.html)、[创维](https://www.quicktvui.com/zh-CN/guide/device/skyworth.html)指引，以及 [StudyOnTV 安装文档](https://github.com/chadyi/StudyOnTV/blob/main/docs/install.md)。
+入口参考：[小米官方说明](https://www.mi.com/ph/support/article/KA-06513/)、[索尼说明](https://pro.sony/s3/2019/07/25131224/TEOS-Pro-BRAVIA-Android-7-Installation-User-manual-1.0.pdf)，以及 QuickTVUI 的 [TCL](https://www.quicktvui.com/zh-CN/guide/device/tcl.html)、[海信](https://www.quicktvui.com/zh-CN/guide/device/hisense.html)、[创维](https://www.quicktvui.com/zh-CN/guide/device/skyworth.html)指引。
 
 ### 3. 允许连接或使用配对码
 
