@@ -1,14 +1,16 @@
 # 学后看 · LearnThenWatch
 
+[![构建与发布](https://github.com/scfido/LearnThenWatch/actions/workflows/release.yml/badge.svg)](https://github.com/scfido/LearnThenWatch/actions/workflows/release.yml)
+[![最新版本](https://img.shields.io/github/v/release/scfido/LearnThenWatch)](https://github.com/scfido/LearnThenWatch/releases/latest)
+[![MIT](https://img.shields.io/github/license/scfido/LearnThenWatch)](LICENSE)
+
 **先学一轮英语，再看一会儿电视。**
 
 面向已有英语基础孩子的离线 Android TV 应用：完成词汇学习与错题订正，兑换一轮观看时间。家长用 PIN 管理学习计划和每日额度，孩子用电视遥控器完成全部操作。
 
-项目仅包含一个 APP，原创代码与文档采用 [MIT](LICENSE) 协议。
+[下载 APK](https://github.com/scfido/LearnThenWatch/releases/latest) · [安装指南](docs/DEPLOYMENT-AGENT.md) · [更新记录](CHANGELOG.md) · [反馈问题](https://github.com/scfido/LearnThenWatch/issues)
 
-## 看看界面
-
-小米电视真实截图，使用隔离演示记录，不包含孩子的个人学习数据。
+## 界面预览
 
 | 学习首页 | 学习与订正 |
 | --- | --- |
@@ -20,7 +22,7 @@
 
 ## 功能与适用环境
 
-- **离线课程**：KET/PET 共 4,815 个阶段内学习项，配有中文释义、例句或词义卡、3,187 份去重发音。两个阶段有重合，不应相加当作独立词汇量。
+- **离线课程**：按 KET/PET 两阶段编排，共 4,815 个学习项（含阶段间重合词），配有中文释义、例句或词义卡、3,187 份离线发音。
 - **学习换时间**：默认每轮 5 项主任务，集中订正后兑换 10 分钟；每日最多实际观看 60 分钟。已有余额不叠加，跨日旧余额清零。
 - **实际播放计时**：结合播放器页面、屏幕与媒体音频状态计时，暂停、浏览、待机和学习期间不扣时；余额耗尽后显示学习页。
 - **持续学习**：任务自动保存，记录首次作答与错题，按 1、3、7、14、30 天间隔复习，提供地图、词卡和学习记录。
@@ -30,9 +32,13 @@
 
 实测为 MiTV-MFTR0 / Android 14、播放器 1.8.9；其他固件需验证。无障碍授权保留时可在开机后重连，部分小米固件待机会强停第三方 APP 并撤销授权，唤醒后需重新开启，普通 APP 无法自行恢复。Home 与系统设置仍可使用，本应用不是设备锁定工具。
 
-课程与发音尚未完成逐条人工教学审校，详见[内容说明](docs/CONTENT.md)。
+课程范围、内容来源和审核状态见[内容说明](docs/CONTENT.md)。
 
-## 安装：人工先开启电视 ADB
+## 下载与安装
+
+从 [Releases](https://github.com/scfido/LearnThenWatch/releases/latest) 下载最新正式版 APK 和 `SHA256SUMS`。
+
+### 开启电视 ADB
 
 电脑与电视连接同一可信局域网，准备电视地址与调试端口。
 
@@ -44,13 +50,13 @@
 2. 提供「无线调试 → 使用配对码配对」的电视，需要记录配对地址、配对码和连接地址；两个端口可能不同。
 3. 首次连接时，在电视上允许该电脑的调试授权。只向可信设备开放 ADB。[ADB 官方指引](https://developer.android.com/tools/adb)
 
-随后交给可以操作电脑 ADB 的 Agent：
+### 安装应用
 
-> 阅读本仓库 `docs/DEPLOYMENT-AGENT.md`，部署学后看正式版。GitHub 仓库是 `<OWNER/REPO>`，设备是 `<电视IP:连接端口或USB序列号>`，播放器已安装。保留现有数据及其他无障碍服务，完成安装、授权和验收。
+开启 ADB 后，可将以下指令交给能够操作 ADB 的 Agent：
 
-GitHub Actions 仅在推送版本标签时构建并发布到所属仓库 **Releases**，附 `SHA256SUMS`。标签必须是小写 `v` 加版本号（如 `v1.5.0`），并与应用版本一致；分支推送和 PR 不触发构建。尚未配置远端时可用本地正式产物，见[构建发布说明](docs/BUILDING.md)。
+> 阅读 https://github.com/scfido/LearnThenWatch/blob/main/docs/DEPLOYMENT-AGENT.md ，从 scfido/LearnThenWatch 的最新 Release 安装学后看。电视设备是 `<电视IP:连接端口或USB序列号>`，云视听小电视已安装。保留现有数据及其他无障碍服务，完成安装、授权和验收。
 
-**1.5.0 的新包名为 `dev.learnthenwatch.tv`**。旧版记录、PIN 和授权不自动迁移，需重新设置；启用新版前停用旧版对应管控服务，避免双重管控。
+也可以直接按照 [ADB 安装指南](docs/DEPLOYMENT-AGENT.md) 连接设备、校验 APK、安装并开启无障碍服务。
 
 ## 开始使用
 
@@ -78,7 +84,7 @@ GitHub Actions 仅在推送版本标签时构建并发布到所属仓库 **Relea
 python tools/validate_curriculum.py
 ```
 
-调试包 `dev.learnthenwatch.tv.debug` 可与正式版并存。
+正式包名为 `dev.learnthenwatch.tv`，调试包为 `dev.learnthenwatch.tv.debug`。构建、测试和版本标签发布方式见[开发文档](docs/BUILDING.md)。
 
 | 文档 | 内容 |
 | --- | --- |

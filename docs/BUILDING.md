@@ -4,12 +4,17 @@
 
 - JDK 17、Gradle Wrapper 8.11.1、Android Gradle Plugin 8.9.2。
 - Android SDK Platform 35、Build Tools 35.0.0；设置 `ANDROID_HOME` 或不入库的 `local.properties` 中的 `sdk.dir`。
-- minSdk 26、targetSdk 28、compileSdk 35。延续已验证的电视行为；targetSdk 升级应单独验证无障碍、覆盖层和音频焦点。通过 GitHub 分发 APK，针对 Google Play 上架截止日期的 Lint 检查单独关闭，其余发布检查保留。
+- minSdk 26、targetSdk 28、compileSdk 35。升级 targetSdk 时须验证无障碍、覆盖层和音频焦点。APK 通过 GitHub Releases 分发，Google Play 目标 API 截止日期检查不适用于此发布渠道。
 - 普通 APK 构建直接打包已提交课程和音频，无需重新下载语料或在 Windows 合成发音。
 
-`app/src/main` 包含正式源码、Manifest、资源与 assets；`app/src/test` 是 JUnit；`app/src/androidTest` 是隔离 Instrumentation。维护工具在 `tools`，文档在 `docs`。脚本由自身位置定位仓库，根目录可改名。
+`app/src/main` 包含正式源码、Manifest、资源与 assets；`app/src/test` 是 JUnit；`app/src/androidTest` 是设备测试。维护工具在 `tools`，文档在 `docs`。
 
 ## 本地构建
+
+```text
+git clone https://github.com/scfido/LearnThenWatch.git
+cd LearnThenWatch
+```
 
 ```powershell
 .\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
@@ -55,13 +60,14 @@ python tools/check_playback_access.py --device <DEVICE> --skip-standby
 
 本地正式构建接口为四个环境变量：`ANDROID_KEYSTORE_PATH`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`。Linux 可用 `keytool` 创建长期密钥后注入同样变量，再运行 `:app:assembleRelease`。缺少任一变量即失败，不生成临时发布签名。
 
-## GitHub Actions 发布
+## 维护者发布
 
-1. 创建自己的 GitHub 仓库并推送源码，工程未绑定特定 owner 或远端。
-2. 在 **Settings → Secrets and variables → Actions** 配置四个 Secrets。已有本地密钥时，可从私人配置直接传给 GitHub CLI，替换下面 `OWNER/REPO`，不打印秘密值：
+正式构建由 [GitHub Actions](https://github.com/scfido/LearnThenWatch/actions/workflows/release.yml) 执行，APK 发布到 [Releases](https://github.com/scfido/LearnThenWatch/releases)。
+
+1. 维护者在仓库 **Settings → Secrets and variables → Actions** 配置四个签名 Secrets。已有本地密钥时，可直接传给 GitHub CLI；Fork 发布应替换仓库名并使用自己的签名：
 
 ```powershell
-$repo = 'OWNER/REPO'
+$repo = 'scfido/LearnThenWatch'
 $config = Get-Content "$env:USERPROFILE\.android\learnthenwatch\signing.json" -Raw | ConvertFrom-Json
 [Convert]::ToBase64String([IO.File]::ReadAllBytes($config.ANDROID_KEYSTORE_PATH)) | gh secret set ANDROID_KEYSTORE_BASE64 --repo $repo
 $config.ANDROID_KEYSTORE_PASSWORD | gh secret set ANDROID_KEYSTORE_PASSWORD --repo $repo
@@ -70,11 +76,11 @@ $config.ANDROID_KEY_PASSWORD | gh secret set ANDROID_KEY_PASSWORD --repo $repo
 Remove-Variable config
 ```
 
-3. 自动构建仅在推送版本标签时触发；分支推送、PR 和手动操作不触发工作流。标签名称必须是小写 `v` 加三段数字版本号，例如 `v1.5.0`。
-4. 在 `gradle.properties` 更新版本名和递增的版本代码；`CHANGELOG.md` 添加对应 `## [版本]` 条目。标签必须严格等于 `v` 加 `appVersionName`，不匹配会在构建前失败。提交后推送该标签：
+2. 在 `gradle.properties` 更新版本名和递增的版本代码，在 `CHANGELOG.md` 添加对应 `## [版本]` 条目，提交并推送 `main`。
+3. 创建并推送版本标签。标签必须为小写 `v` 加三段数字版本号，例如 `v1.5.0`，且严格等于 `v` 加 `appVersionName`；不匹配会在构建前失败。只有标签推送会触发自动构建，分支推送、PR 和手动操作不触发。
 
 ```powershell
-git tag v1.5.0
+git tag -a v1.5.0 -m "LearnThenWatch v1.5.0"
 git push origin v1.5.0
 ```
 

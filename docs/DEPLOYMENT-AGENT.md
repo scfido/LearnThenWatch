@@ -7,7 +7,7 @@
 | 输入 | 要求 |
 | --- | --- |
 | `DEVICE` | 明确的 ADB 序列号或 `IP:连接端口`，每条 ADB 命令都指定 `-s` |
-| `REPO` | 实际 GitHub `OWNER/REPO`，不猜测仓库地址 |
+| `REPO` | 默认 `scfido/LearnThenWatch`；部署 Fork 时使用用户指定的仓库 |
 | `TAG` | 指定版本或默认最新稳定 Release，不自动选择预发布 |
 | 本地包（可选） | 用户明确提供的正式 APK、SHA256SUMS 和可信证书指纹，可代替在线下载 |
 | 可信签名指纹 | 首次安装从维护者可信渠道取得；已有安装时与已安装包证书比较 |
@@ -35,7 +35,7 @@ adb -s <DEVICE> shell settings get secure accessibility_enabled
 
 ## 2. 下载、校验与验签
 
-使用 GitHub CLI（私有仓库需已有有效登录）：
+官方发布页：[scfido/LearnThenWatch Releases](https://github.com/scfido/LearnThenWatch/releases/latest)。使用 GitHub CLI 下载，`<REPO>` 默认替换为 `scfido/LearnThenWatch`：
 
 ```text
 gh release view --repo <REPO> --json tagName,assets,isPrerelease
