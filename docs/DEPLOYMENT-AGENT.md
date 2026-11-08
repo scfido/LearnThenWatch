@@ -15,7 +15,7 @@
 | 可信签名指纹 | 首次安装从维护者可信渠道取得；已有安装时与已安装包证书比较 |
 | 家长 PIN（可选） | 由家长指定或直接在电视输入，不生成公开默认 PIN，不打印或保存到脚本和日志 |
 
-正式包：`dev.learnthenwatch.tv`；启动组件：`dev.learnthenwatch.tv/dev.learnthenwatch.tv.MainActivity`；管控服务：`dev.learnthenwatch.tv/dev.learnthenwatch.tv.PlaybackAccessService`。不要把 `.debug` APK 或测试 APK 部署给孩子使用。
+正式包：`scfido.learnthenwatch.tv`；启动组件：`scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.MainActivity`；管控服务：`scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.PlaybackAccessService`。不要把 `.debug` APK 或测试 APK 部署给孩子使用。
 
 ## 1. 连接并记录现状
 
@@ -25,7 +25,7 @@
 adb devices -l
 adb -s <DEVICE> get-state
 adb -s <DEVICE> shell getprop ro.build.version.sdk
-adb -s <DEVICE> shell pm path dev.learnthenwatch.tv
+adb -s <DEVICE> shell pm path scfido.learnthenwatch.tv
 adb -s <DEVICE> shell settings get secure enabled_accessibility_services
 adb -s <DEVICE> shell settings get secure accessibility_enabled
 ```
@@ -57,7 +57,7 @@ gh release download <TAG> --repo <REPO> --pattern "learn-then-watch-*.apk" --pat
 
 ```text
 adb -s <DEVICE> install -r <已验证的正式APK>
-adb -s <DEVICE> shell am start -n dev.learnthenwatch.tv/dev.learnthenwatch.tv.MainActivity
+adb -s <DEVICE> shell am start -n scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.MainActivity
 ```
 
 安装失败应解释原始错误。`INSTALL_FAILED_UPDATE_INCOMPATIBLE` 为签名冲突，`VERSION_DOWNGRADE` 为降级；两者均停止。磁盘不足时报告空间需求，不替用户删除数据。禁止 `pm clear`，不自动卸载重装。
@@ -70,13 +70,13 @@ adb -s <DEVICE> shell am start -n dev.learnthenwatch.tv/dev.learnthenwatch.tv.Ma
 
 1. **重新读取**当前无障碍列表，按冒号分隔为组件；`null` 或空值视为空列表。
 2. 若本项目调试版服务正在运行，在家长确认后停用该调试服务；保留其他应用的服务，使用组件的展开全名比对，避免误判短写形式。
-3. 若正式服务尚未存在，追加 `dev.learnthenwatch.tv/dev.learnthenwatch.tv.PlaybackAccessService`，去重后写回整张列表，再将 `accessibility_enabled` 设为 `1`。
+3. 若正式服务尚未存在，追加 `scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.PlaybackAccessService`，去重后写回整张列表，再将 `accessibility_enabled` 设为 `1`。
 4. 回读确认，并观察服务是否实际连接。设置成功不等于服务已连上；需等待并查看应用实时状态或下面的诊断。
 
 不要只把列表覆盖成一个服务，不要清空全部无障碍设置，不要启动 root、设备所有者或持久化提权方案。固件拒绝 shell 写设置时，引导家长在系统界面授权；受限设置也按设备正常交互解锁，不能声称授权已完成。
 
 ```text
-adb -s <DEVICE> shell dumpsys activity service dev.learnthenwatch.tv/dev.learnthenwatch.tv.PlaybackAccessService
+adb -s <DEVICE> shell dumpsys activity service scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.PlaybackAccessService
 adb -s <DEVICE> logcat -d -s LearnThenWatch:I
 ```
 

@@ -1,7 +1,7 @@
 # LearnThenWatch repository instructions
 
 - This repository contains one Android TV app (`app`), written in Java. Product: 学后看 / LearnThenWatch. Root directory name is arbitrary.
-- Production application ID is `dev.learnthenwatch.tv`; debug adds `.debug`. Java namespace is `dev.learnthenwatch.tv`. Use the actual application ID for own-package checks and test broadcasts.
+- Production application ID is `scfido.learnthenwatch.tv`; debug adds `.debug`. Java namespace is `scfido.learnthenwatch.tv`. Use the actual application ID for own-package checks and test broadcasts.
 - Read `docs/BUILDING.md` for build/release details. Baseline checks: `bash ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest` (Windows: `gradlew.bat`) and `python tools/validate_curriculum.py`.
 - For installing an existing release on a TV, follow `docs/DEPLOYMENT-AGENT.md`. Require an explicit device and real repository or supplied release. Installation operations are limited to LearnThenWatch.
 - Write README and `docs/INSTALL.md` for parents, using plain language. README offers Agent and USB-drive installation links; detailed ADB and pairing steps belong in INSTALL, and command execution instructions belong in DEPLOYMENT-AGENT.

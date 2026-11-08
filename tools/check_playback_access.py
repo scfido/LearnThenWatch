@@ -15,11 +15,11 @@ if hasattr(sys.stdout, "reconfigure"):
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--device", required=True)
-parser.add_argument("--package", default="dev.learnthenwatch.tv.debug", choices=["dev.learnthenwatch.tv.debug"])
+parser.add_argument("--package", default="scfido.learnthenwatch.tv.debug", choices=["scfido.learnthenwatch.tv.debug"])
 parser.add_argument("--skip-standby", action="store_true", help="Explicitly exclude firmware standby that force-stops third-party apps")
 args = parser.parse_args()
 prefix = ["adb", "-s", args.device]
-monitor = args.package + "/dev.learnthenwatch.tv.PlaybackAccessService"
+monitor = args.package + "/scfido.learnthenwatch.tv.PlaybackAccessService"
 
 
 def adb(*parts):
@@ -30,7 +30,7 @@ def adb(*parts):
 original = adb("shell", "settings", "get", "secure", "enabled_accessibility_services")
 original_enabled = adb("shell", "settings", "get", "secure", "accessibility_enabled")
 services = [s for s in original.split(":") if s and s != "null"
-            and s.split("/")[0] not in ("local.mytv.english", "dev.learnthenwatch.tv", args.package)]
+            and s.split("/")[0] not in ("scfido.learnthenwatch.tv", args.package)]
 
 
 def set_services(value):
@@ -96,7 +96,7 @@ try:
     set_services(":".join(services))
     time.sleep(1)
     process = subprocess.Popen(prefix + ["shell", "am", "instrument", "-w", "-e", "screen", "monitor", "-e", "standby", "false" if args.skip_standby else "true",
-                                        args.package + ".test/dev.learnthenwatch.tv.LearningTestRunner"],
+                                        args.package + ".test/scfido.learnthenwatch.tv.LearningTestRunner"],
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                encoding="utf-8", errors="replace", bufsize=1)
     for line in process.stdout:

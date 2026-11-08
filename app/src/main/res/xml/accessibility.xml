@@ -3,5 +3,5 @@
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
-    android:settingsActivity="dev.learnthenwatch.tv.MainActivity"
+    android:settingsActivity="scfido.learnthenwatch.tv.MainActivity"
     android:notificationTimeout="100" />

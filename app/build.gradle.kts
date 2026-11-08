@@ -5,16 +5,16 @@ val signingValues = signingEnvironment.associateWith { providers.environmentVari
 val hasReleaseSigning = signingValues.values.all { !it.isNullOrBlank() }
 
 android {
-    namespace = "dev.learnthenwatch.tv"
+    namespace = "scfido.learnthenwatch.tv"
     compileSdk = 35
     buildToolsVersion = "35.0.0"
     defaultConfig {
-        applicationId = "dev.learnthenwatch.tv"
+        applicationId = "scfido.learnthenwatch.tv"
         minSdk = 26
         targetSdk = 28
         versionCode = providers.gradleProperty("appVersionCode").get().toInt()
         versionName = providers.gradleProperty("appVersionName").get()
-        testInstrumentationRunner = "dev.learnthenwatch.tv.LearningTestRunner"
+        testInstrumentationRunner = "scfido.learnthenwatch.tv.LearningTestRunner"
     }
     buildFeatures { buildConfig = true }
     // Distributed directly as a TV APK. Preserve the tested target during this refactor;

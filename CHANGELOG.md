@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- 应用包名与源码命名空间统一为 `scfido.learnthenwatch.tv`，调试包为 `scfido.learnthenwatch.tv.debug`。
 - 面向家长重写产品介绍，补充 KET/PET 词汇学习用途。
 - 安装入口统一为电脑 Agent 与手动 U 盘，增加多品牌 ADB、无线配对和常见问题指南。
 

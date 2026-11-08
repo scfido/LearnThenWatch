@@ -2,10 +2,10 @@
 from contextlib import contextmanager
 import subprocess
 
-PACKAGE = "dev.learnthenwatch.tv.debug"
-RUNNER = PACKAGE + ".test/dev.learnthenwatch.tv.LearningTestRunner"
-SERVICE = PACKAGE + "/dev.learnthenwatch.tv.PlaybackAccessService"
-CONFLICTING_PACKAGES = {PACKAGE, "dev.learnthenwatch.tv", "local.mytv.english"}
+PACKAGE = "scfido.learnthenwatch.tv.debug"
+RUNNER = PACKAGE + ".test/scfido.learnthenwatch.tv.LearningTestRunner"
+SERVICE = PACKAGE + "/scfido.learnthenwatch.tv.PlaybackAccessService"
+CONFLICTING_PACKAGES = {PACKAGE, "scfido.learnthenwatch.tv"}
 
 
 def adb(device, *parts, timeout=30):
