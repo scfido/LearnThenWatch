@@ -9,22 +9,22 @@
 | 有自然例句的学习项 | 1,162 | 1,709 |
 | 明确标记的词义卡学习项 | 553 | 1,391 |
 
-PET 保留与 KET 共同的基础词，在两个阶段分别显示；不应把两阶段数量相加当作独立词汇量。变体、同头词不同词性的来源记录归并到同一个学习项。`May`/`may`、`Miss`/`miss` 等有不同意义的大小写形式单独保存。官方源文件中的 `suprising` 规范为 `surprising`，`v/versus` 为 `versus`，`café/cafe` 为 `cafe`。
+PET 包含与 KET 重合的基础词，表中按阶段分别统计。变体和同头词不同词性的来源记录归并到同一个学习项；`May`/`may`、`Miss`/`miss` 等不同意义的大小写形式单独保存。
 
-所有已解析记录均可在 `app/src/main/assets/licenses/reference-coverage.tsv` 查到原头词、规范词和稳定学习 ID；`uncovered.tsv` 当前没有缺项。这个覆盖口径是**参考头词覆盖**，不表示已完整拆分每个词的全部义项，也不代表考试所有可能词汇。
+原头词、规范词和学习 ID 见[覆盖映射](../app/src/main/assets/licenses/reference-coverage.tsv)。覆盖统计以参考头词为单位，尚未逐个拆分全部义项。
 
 ## 内容来源与练习边界
 
 - 中文释义来自 ECDICT 仓库的 MIT 授权数据，并进行词性选择、常见意义简化和针对性纠错。完整许可证随 APK 保存在 `app/src/main/assets/licenses/ECDICT-LICENSE.txt`。
 - 713 个阶段内学习项使用本项目原创双语例句；其余自然例句来自 Tatoeba/ManyThings 的英中句对，按目标词、长度、中文意义和敏感内容规则挑选。逐句作者与句子 ID 保存在 `sentence-attribution.tsv`，许可证为 CC BY 2.0 France；中文做繁简转换。
 - 暂无合适自然句的词条保留明确的 `Meaning: 单词` 词义卡，只用于认词和听辨。`VocabularyCatalog.Item.naturalExample()` 可区分二者，不能把词义卡机械挖空当作例句或语境题。
-- 语料句的目标词意义匹配经过自动规则检查和抽查；没有宣称全部经过逐句人工审核。长期给孩子使用前，仍建议继续做逐条语义和难度复核。
+- 语料句与目标词的意义匹配经过自动检查和抽查，全量逐句语义与难度审校尚待完成。
 
 ## 离线发音
 
-3,187 份去重后的词/短语发音，约 20 MiB。本机 `Microsoft Zira Desktop`（美式英语）离线合成，编码为 Android 可播放的单声道 MP3；同一个词在两个阶段共用音频。应用播放不依赖 Android 英语 TTS，也不使用网络服务。
+3,187 份去重后的词/短语发音，约 20 MiB，使用 `Microsoft Zira Desktop`（美式英语）合成为单声道 MP3。同一个词在两个阶段共用音频，电视播放无需安装英语 TTS 或连接网络。
 
-所有文件执行存在性、格式头和可解码检查。没有宣称逐词完成真人发音听审。较少见的缩写、多音词及英美差异需要继续复核。
+全部音频通过文件完整性与解码检查。逐词人工听审尚待完成，缩写、多音词及英美差异是重点复核项。
 
 ## 复现与检查
 
@@ -38,4 +38,4 @@ python tools/encode_pronunciation.py
 python tools/validate_curriculum.py --decode-audio
 ```
 
-`tools/editorial.tsv` 保存可追踪的人工修订；更新后重新生成课程与覆盖报告。词条 ID 由规范词确定，不受排序变化影响。音频按词去重，课程文件不需要把原词典或原双语语料完整打包进 APK。
+`tools/editorial.tsv` 保存人工修订，修改后重新生成课程与覆盖报告。词条 ID 由规范词确定，不受排序变化影响。音频按词去重，原始词典和双语语料不随 APK 分发。

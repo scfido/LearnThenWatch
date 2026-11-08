@@ -25,7 +25,11 @@
 
 播放测试覆盖零余额学习覆盖层、完成学习后恢复播放、暂停不扣时、恢复计时、余额耗尽、返回/Home 清理覆盖层、任务保留和无障碍服务断开重连。设备测试使用独立数据库与偏好；命令见[构建与测试](BUILDING.md)。
 
-版本标签触发的云端构建与发布记录见 [GitHub Actions](https://github.com/scfido/LearnThenWatch/actions/workflows/release.yml)。
+## 自动构建与发布
+
+2026-11-08，[v1.5.1 云端构建](https://github.com/scfido/LearnThenWatch/actions/runs/42435879052)通过课程检查、五组 JUnit、调试及设备测试 APK 构建、正式 APK 构建和签名验证，并发布到 [Releases](https://github.com/scfido/LearnThenWatch/releases/tag/v1.5.1)。
+
+下载发布附件后，已核对 SHA-256、正式证书、包名 `dev.learnthenwatch.tv`、版本 `1.5.1` 与 versionCode `9`。全部构建记录见 [GitHub Actions](https://github.com/scfido/LearnThenWatch/actions/workflows/release.yml)。
 
 ## 兼容性限制
 

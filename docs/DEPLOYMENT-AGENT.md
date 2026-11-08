@@ -50,7 +50,7 @@ gh release download <TAG> --repo <REPO> --pattern "learn-then-watch-*.apk" --pat
 - 使用 SDK 的 `apkanalyzer manifest application-id <APK>`、`apkanalyzer manifest version-name <APK>`，或 `aapt dump badging <APK>`，确认正式包名和预期版本。
 - 若已有正式安装，用 `pm path` 找到 base APK，`adb pull` 到本地后对比证书；签名不一致或版本将降级时停止，不能用卸载、清数据或 `-d` 绕过。
 
-默认维护者签名指纹记录在 [验证记录](VALIDATION.md) 的 1.5.0 条目。Fork 必须自行建立发布密钥，并告知其可信指纹；不要把上游指纹套用到不同发布者。
+官方证书指纹见[正式签名](VALIDATION.md#正式签名)。Fork 发布时使用其维护者提供的可信指纹。
 
 ## 3. 安装与首次设置
 
