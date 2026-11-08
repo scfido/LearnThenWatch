@@ -32,6 +32,8 @@ jobs:
           log-accepted-android-sdk-licenses: false
       - name: Check bundled curriculum
         run: python3 tools/validate_curriculum.py
+      - name: Cache verified Gradle distribution
+        run: python3 tools/cache_gradle.py
       - name: Test and build debug APKs
         run: bash ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Upload debug APKs

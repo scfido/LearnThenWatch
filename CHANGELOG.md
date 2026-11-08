@@ -1,5 +1,10 @@
 # 更新记录
 
+## [1.5.3] - 2026-11-08
+
+- 使用 `scfido.learnthenwatch.tv` 包名发布正式 APK。
+- 修复构建工具下载失败：官方源不可用时使用镜像缓存，并严格核对官方 SHA-256。
+
 ## [1.5.2] - 2026-11-08
 
 - 应用包名与源码命名空间统一为 `scfido.learnthenwatch.tv`，调试包为 `scfido.learnthenwatch.tv.debug`。
