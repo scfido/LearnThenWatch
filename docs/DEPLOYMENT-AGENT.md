@@ -82,6 +82,41 @@ adb -s <DEVICE> logcat -d -s LearnThenWatch:I
 
 发生配置失败时恢复保存的原列表与总开关，并报告当前实际状态。正常安装完成后保留正式服务和其他原有服务。
 
+### 可选：开机与待机后的后台恢复
+
+1.5.5 起提供此功能，部署前确认所选 Release 包含 `MonitorRevivalService`；旧版不能执行以下授权。先说明并确认家长需要后台恢复：这会允许学后看恢复自己的无障碍服务；关闭管控请使用受 PIN 保护的「家长配置 → 观看管控」。通知访问的系统权限范围较宽，但实现不读取、保存或上传通知内容。
+
+仅在已安装正确版本、设置家长 PIN 并开启观看管控后执行。记录本包原 `WRITE_SECURE_SETTINGS` 授权和通知监听授权，保留其他监听服务：
+
+```text
+adb -s <DEVICE> shell dumpsys package scfido.learnthenwatch.tv
+adb -s <DEVICE> shell settings get secure enabled_notification_listeners
+adb -s <DEVICE> shell pm grant scfido.learnthenwatch.tv android.permission.WRITE_SECURE_SETTINGS
+adb -s <DEVICE> shell cmd notification allow_listener scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.MonitorRevivalService
+```
+
+首条输出仅在本地检查 `android.permission.WRITE_SECURE_SETTINGS: granted=true`，不要公开整份设备信息。`allow_listener` 只添加此组件，不覆盖监听列表。若固件拒绝命令，家长可在系统「通知使用权 / 通知访问」中允许「学后看 · 后台恢复」；若 `pm grant` 被拒绝，本功能不可用，回到普通无障碍授权，不使用提权绕过。
+
+打开一次学后看触发恢复，再回到电视原桌面。回读授权，并确认服务实际连接：
+
+```text
+adb -s <DEVICE> shell dumpsys activity service scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.MonitorRevivalService
+adb -s <DEVICE> shell dumpsys activity service scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.PlaybackAccessService
+```
+
+后台恢复不会启动学习页面，不接管桌面或 Home 键，不改变 ADB 开关。检查窗口约两分钟，授权仍在但服务未连上时，只移除并重新添加自己的组件一次，保持其他服务，不关闭无障碍总开关。未设置 PIN、家长关闭观看管控、用户尚未解锁或无额外权限时不恢复。不要给正式版和调试版同时启用此功能。
+
+撤销后台恢复时，仅操作本组件：
+
+```text
+adb -s <DEVICE> shell pm revoke scfido.learnthenwatch.tv android.permission.WRITE_SECURE_SETTINGS
+adb -s <DEVICE> shell cmd notification disallow_listener scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.MonitorRevivalService
+```
+
+撤销恢复权限不会自动撤销原观看管控授权；不再需要管控时由家长关闭观看管控或系统无障碍服务。配置失败时，仅还原本次新增的授权，不撤销原本已有权限，不覆盖其他服务列表。
+
+方案参考 aerial-tv 的 [GuardSetup](https://github.com/pengchujin/aerial-tv/blob/ef743413ade4e9c8a98af3e641302309886b61a2/app/src/main/java/app/orchard/tv/guard/GuardSetup.kt)、[RevivalListener](https://github.com/pengchujin/aerial-tv/blob/ef743413ade4e9c8a98af3e641302309886b61a2/app/src/main/java/app/orchard/tv/guard/RevivalListener.kt)，在本项目独立实现。没有采用其桌面接管、账户同步和 ADB 保持开启机制。Android 10 及以下的低内存设备可能不支持通知监听（[Android 官方说明](https://developer.android.com/reference/android/service/notification/NotificationListenerService)）；若系统不再拉起本应用，应用自身无法承诺待机或强停后恢复。
+
 ## 5. 验收与交付
 
 逐项记录实际结果：
@@ -93,4 +128,6 @@ adb -s <DEVICE> logcat -d -s LearnThenWatch:I
 5. 需要余额耗尽、事务或大量 UI 回归时，按 [构建文档](BUILDING.md) 使用调试包隔离测试，不修改孩子余额或正式数据库来加速测试。
 6. 如果没有进行真实播放或到时验收，明确写“未验收”，不能由服务连接推断全部闭环通过。完整重启、待机验证可能打断电视使用，仅在约定后操作。
 
-交付报告只含版本、设备型号、安装与授权状态、检查结果和遗留问题，不包含 PIN、配对码或私钥。提醒家长：部分小米固件待机会撤销授权，唤醒后需重新开启；后台白名单效果需按固件验证。
+启用后台恢复后，在家长约定的时间分别检查完整重启与待机唤醒：等待最多约两分钟，确认原画面未被学习界面覆盖、管控服务实际连接且其他无障碍服务仍在。连接成功后，再按隔离播放测试验收计时与拦截。完整重启、待机、长期后台三项分别记录，未测试的项写“未验收”。
+
+交付报告只含版本、设备型号、安装与授权状态、检查结果和遗留问题，不包含 PIN、配对码或私钥。提醒家长：部分小米固件待机会撤销授权，未配置后台恢复或恢复失败时仍需重新开启；恢复效果需按固件验证。

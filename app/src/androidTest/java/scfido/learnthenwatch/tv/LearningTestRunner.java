@@ -44,6 +44,18 @@ public final class LearningTestRunner extends Instrumentation {
     @Override public void onStart() {
         Bundle result = new Bundle(); context = getTargetContext();
         try {
+            if (arguments != null && "true".equals(arguments.getString("recoveryFixture"))) {
+                // Dedicated, newly installed debug app only. Survives reboot/standby; the
+                // caller removes this disposable install afterwards, never production data.
+                if (!BuildConfig.DEBUG || !context.getPackageName().endsWith(".debug")
+                        || context.getDatabasePath("study.db").exists()
+                        || !context.getSharedPreferences("study_settings", 0).getAll().isEmpty())
+                    throw new IllegalStateException("Recovery fixture requires a fresh debug install");
+                LearningRepository fixture = LearningRepository.get(context);
+                fixture.setPin(String.format(java.util.Locale.ROOT, "%04d", new java.security.SecureRandom().nextInt(10000)));
+                result.putString("stream", "PASS: disposable recovery fixture created in fresh debug install.\n");
+                finish(Activity.RESULT_OK, result); return;
+            }
             if (arguments != null && "true".equals(arguments.getString("remote"))) {
                 int checks = RemoteNavigationChecks.run(this, context);
                 result.putString("stream", "PASS: " + checks + " real remote navigation assertions; isolated data cleaned.\n");

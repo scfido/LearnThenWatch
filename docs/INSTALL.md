@@ -92,6 +92,8 @@ https://github.com/scfido/LearnThenWatch/blob/main/docs/DEPLOYMENT-AGENT.md
 
 仅进行英语学习时，可以先使用课程；需要观看时间管理时再完成相应授权。
 
+需要开机或待机后自动恢复管控时，支持此功能的版本可让 Agent 按[部署手册](DEPLOYMENT-AGENT.md#可选开机与待机后的后台恢复)配置。恢复在后台进行，保留电视当前画面；需要额外授权，效果以这台电视的实际检查为准。U 盘安装后仍可手动开启无障碍服务，需要自动恢复时再让 Agent 协助。
+
 ## 常见问题
 
 | 遇到的情况 | 可以先这样处理 |
@@ -103,6 +105,6 @@ https://github.com/scfido/LearnThenWatch/blob/main/docs/DEPLOYMENT-AGENT.md
 | 提示无法解析或无法安装 | 重新下载完整 APK，并核对电视系统是否达到 Android 8.0；如系统限制第三方应用安装，按厂商允许的方式处理 |
 | 电视仅支持自带应用商店 | 先确认该型号是否支持 Android APK；更换连接方式不一定能解决系统限制 |
 | 安装后没有管理观看时间 | 进入「监控检查」，按提示完成家长密码和无障碍授权；兼容范围见[兼容性说明](VALIDATION.md) |
-| 待机后管控失效 | 部分固件会关闭无障碍服务，重新开启「学后看 · 观看管控」后再检查 |
+| 待机后管控失效 | 先重新开启「学后看 · 观看管控」；支持后台恢复的版本可让 Agent 配置额外授权，并在这台电视上验证 |
 
 仍有问题，可到[问题反馈](https://github.com/scfido/LearnThenWatch/issues)提供电视品牌、完整型号、系统版本和报错内容。安装完成后，ADB 可以按需关闭。

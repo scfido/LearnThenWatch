@@ -289,6 +289,12 @@ public final class LearningRepository {
 
     public synchronized boolean hasPin() { return prefs.contains("pinHash") && prefs.contains("pinSalt"); }
 
+    // Recovery needs only these flags, not the curriculum or a writable database at boot.
+    static boolean monitorRecoveryEnabled(Context context) {
+        SharedPreferences settings = context.getSharedPreferences("study_settings", Context.MODE_PRIVATE);
+        return settings.contains("pinHash") && settings.contains("pinSalt") && settings.getBoolean("enabled", true);
+    }
+
     public synchronized void setPin(String pin) {
         if (pin == null || !pin.matches("[0-9]{4}")) throw new IllegalArgumentException("请设置四位数字 PIN");
         byte[] salt = new byte[16]; new SecureRandom().nextBytes(salt);

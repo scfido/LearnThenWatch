@@ -69,6 +69,7 @@ public final class MainActivity extends Activity {
     @Override public void onResume() {
         super.onResume(); foreground = true; handler.removeCallbacks(tick); handler.post(tick);
         if (repository == null) return;
+        MonitorRecovery.request(this);
         if (study != null) study.resume(); else renderCurrent();
     }
     @Override public void onPause() {
@@ -500,7 +501,10 @@ public final class MainActivity extends Activity {
             else { navigation.replace(pendingGate != null ? pendingGate : new Screen("parent")); pendingGate = null; renderCurrent(); }
         } catch (RuntimeException error) { pinBusy = false; pinMessage.setText("操作未完成，请重试"); }
     }
-    private void notifyService() { if (PlaybackAccessService.instance != null) PlaybackAccessService.instance.settingsChanged(); }
+    private void notifyService() {
+        if (PlaybackAccessService.instance != null) PlaybackAccessService.instance.settingsChanged();
+        MonitorRecovery.request(this);
+    }
     private void toast(String message) { android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show(); }
     private void openPlayer() {
         Intent intent = getPackageManager().getLaunchIntentForPackage(PlaybackAccessService.TARGET);

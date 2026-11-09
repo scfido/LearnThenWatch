@@ -9,7 +9,7 @@ import re
 import subprocess
 import sys
 import time
-from device_tools import restore_accessibility
+from device_tools import restore_accessibility, suspended_recovery
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -106,6 +106,8 @@ def player(resume=False):
 
 process = None
 passed = False
+recovery = suspended_recovery(args.device)
+recovery.__enter__()
 try:
     power(True)
     set_services(":".join(services))
@@ -166,5 +168,8 @@ finally:
             adb("shell", "am", "force-stop", args.package)
             process.terminate()
     finally:
-        restore_accessibility(args.device, original, original_enabled)
+        try:
+            restore_accessibility(args.device, original, original_enabled)
+        finally:
+            recovery.__exit__(None, None, None)
     print("Restored original accessibility services.", flush=True)

@@ -1,5 +1,6 @@
 """Shared ADB helpers for isolated debug checks; never clear production data."""
 from contextlib import contextmanager
+import re
 import subprocess
 
 PACKAGE = "scfido.learnthenwatch.tv.debug"
@@ -33,21 +34,46 @@ def restore_accessibility(device, original, enabled):
 
 
 @contextmanager
+def suspended_recovery(device):
+    """Prevent our installed apps from re-enabling control during isolated tests."""
+    permission = "android.permission.WRITE_SECURE_SETTINGS"
+    revoked = []
+    try:
+        for package in sorted(CONFLICTING_PACKAGES):
+            info = adb(device, "shell", "dumpsys", "package", package)
+            if re.search(r"android\.permission\.WRITE_SECURE_SETTINGS: granted=true\b", info):
+                # Record before mutation so cleanup also runs on a transport failure.
+                revoked.append(package)
+                adb(device, "shell", "pm", "revoke", package, permission)
+        yield
+    finally:
+        failures = []
+        for package in revoked:
+            try:
+                adb(device, "shell", "pm", "grant", package, permission)
+            except Exception as error:
+                failures.append(str(error))
+        if failures:
+            raise RuntimeError("Could not restore monitor recovery grants: " + "; ".join(failures))
+
+
+@contextmanager
 def isolated_services(device):
     if "mWakefulness=Awake" not in adb(device, "shell", "dumpsys", "power"):
         raise RuntimeError("Wake the TV before UI checks or screenshot capture.")
     original = adb(device, "shell", "settings", "get", "secure", "enabled_accessibility_services")
     enabled = adb(device, "shell", "settings", "get", "secure", "accessibility_enabled")
     retained = [s for s in original.split(":") if s and s != "null" and s.split("/")[0] not in CONFLICTING_PACKAGES]
-    try:
-        set_services(device, ":".join(retained))
-        yield
-    finally:
-        # Leave the player before restoring production monitoring.
+    with suspended_recovery(device):
         try:
-            adb(device, "shell", "input", "keyevent", "KEYCODE_HOME")
+            set_services(device, ":".join(retained))
+            yield
         finally:
-            restore_accessibility(device, original, enabled)
+            # Leave the player before restoring production monitoring.
+            try:
+                adb(device, "shell", "input", "keyevent", "KEYCODE_HOME")
+            finally:
+                restore_accessibility(device, original, enabled)
 
 
 def require_pass(output):

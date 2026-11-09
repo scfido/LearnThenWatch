@@ -47,6 +47,17 @@ python tools/check_playback_access.py --device <DEVICE> --skip-standby
 
 `run_device_checks.py --suite sqlite|ui|remote` 可分别运行。测试使用隔离数据库、偏好与 PIN，不更改电视日期；临时停用冲突的学习管控服务，保留其他服务，结束时恢复原列表和无障碍总开关。不要并行运行设备工具。电脑进程被强杀时，应核对并恢复原无障碍列表。
 
+已配置后台恢复时，设备工具会临时撤销正式版及调试版已有的 `WRITE_SECURE_SETTINGS` 授权，结束后还原，避免恢复过程干扰隔离测试；不修改通知监听列表。电脑进程被强杀时，还需按测试前记录还原这两个包原有的恢复权限。后台恢复本身的完整重启与待机验收需单独执行，见 [Agent 手册](DEPLOYMENT-AGENT.md#可选开机与待机后的后台恢复)。
+
+后台恢复的可重复隔离检查（会安装临时调试版，要求电视尚未安装调试 APP；已有测试 APK 会备份并还原）：
+
+```powershell
+python -m unittest discover -s tools -p test_device_tools.py
+python tools/check_monitor_recovery.py --device <DEVICE> --reboot --standby
+```
+
+先约定电视可重启和待机的时间，再选择对应参数；不带参数时只检查通知监听恢复与覆盖升级。工具在新装的调试版中生成随机测试 PIN，不输出密码，不修改正式版学习记录，结束后移除临时调试 APP、还原原测试 APK、无障碍列表及已有恢复权限。若 ADB 因固件关机策略断开，需先恢复连接，再按原记录完成清理；不能把连接丢失当作恢复测试通过。
+
 截图工具生成五张画面至 `docs/screenshots`，使用演示记录，结束后删除演示数据。监控检查会实际播放、暂停和切换 Home，应在[已验证的兼容环境](VALIDATION.md)运行；页面变化可能影响自动选片。当前小米固件待机会强停进程，使用 `--skip-standby`；普通待机恢复只在确认支持的固件上验收。
 
 ## 正式签名
