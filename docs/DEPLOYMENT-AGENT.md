@@ -34,6 +34,13 @@ adb -s <DEVICE> shell settings get secure accessibility_enabled
 
 保存原无障碍列表和总开关，检查是否有本项目调试版管控服务。安装本身不改变该列表；启用正式服务时保留其他应用的服务和数据。
 
+### 特殊连接排查
+
+- 使用最新版 [Android Platform Tools](https://developer.android.com/tools/releases/platform-tools)。只有配对式无线调试时，使用电视显示的两组地址分别执行 `adb pair` 和 `adb connect`；不要默认回退到 5555，不把配对码写在命令行或日志中。[Android 官方说明](https://developer.android.com/tools/adb#wireless)
+- TCL / 雷鸟没有无线配对入口时，先按完整型号确认是否支持 USB 调试，以及对应的接口和数据线。支持时通过 USB 连接电脑，请家长在电视上允许调试。
+- 有线设备在 `adb devices -l` 中显示 `device` 后，可直接以该 USB 序列号完成安装。确需改用网络、且家长希望启用网络 ADB 时，执行 `adb -s <USB_SERIAL> tcpip 5555`，再 `adb connect <电视IP>:5555`；后续 `DEVICE` 改为该网络地址，并重新检查身份。支持的设备可用 `adb -s <网络DEVICE> usb` 退出此 TCP 模式；厂商网络调试开关按原设置还原。重启后重新检查调试开关和连接地址。
+- 没有可用的调试入口时，转到家长指南的 U 盘安装。不要代装第三方 ADB 开启器、应用商店或其他辅助 APP；不能连接就如实报告无法执行 ADB 验收，不猜端口、不用投屏码配对。
+
 ## 2. 下载、校验与验签
 
 官方发布页：[scfido/LearnThenWatch Releases](https://github.com/scfido/LearnThenWatch/releases/latest)。使用 GitHub CLI 下载，`<REPO>` 默认替换为 `scfido/LearnThenWatch`：
@@ -62,6 +69,25 @@ adb -s <DEVICE> shell am start -n scfido.learnthenwatch.tv/scfido.learnthenwatch
 
 安装失败应解释原始错误。`INSTALL_FAILED_UPDATE_INCOMPATIBLE` 为签名冲突，`VERSION_DOWNGRADE` 为降级；两者均停止。磁盘不足时报告空间需求，不替用户删除数据。禁止 `pm clear`，不自动卸载重装。
 
+### 特殊安装排查
+
+检查安装输出中的 `Success`，再回读已安装包的版本；同时检查错误文本，不能只依赖进程退出码。
+
+| 情况 | 处理 |
+| --- | --- |
+| `INSTALL_FAILED_OLDER_SDK` | 回读 API；低于 26 时停止安装，并说明需要 Android 8.0 或更高版本 |
+| TCL / 雷鸟 `INSTALL_FAILED_VERIFICATION_FAILURE` | 检查电视的安装授权；改用 U 盘或已有文件管理器。使用电视自带的多屏互动推送时，请家长在安装提示中选择「同意」 |
+| 创维等 `INSTALL_FAILED_USER_RESTRICTED` | 检查电视「安装未知应用」开关及安装确认提示；仍受限时，改用 U 盘或厂商提供的安装入口，保留系统安装校验设置 |
+| 提示禁止桌面类应用 | 核对 APK 包名为 `scfido.learnthenwatch.tv`，确认下载的是正式发布包；仍失败时记录原始错误，按完整型号和固件版本排查 |
+
+ADB 已授权但安装通道被拒绝时，可将已验证的学后看 APK 放到电视下载目录，再请家长用**已有**文件管理器打开：
+
+```text
+adb -s <DEVICE> push <已验证的正式APK> /sdcard/Download/LearnThenWatch-install.apk
+```
+
+先确认目标文件不存在，存在则换一个未使用的文件名；仅清理本次创建的临时 APK。若没有文件管理器或固件仍拒绝安装，停止并说明限制。不要为了安装而换签名、改包名、停用系统组件或下载第三方商店。
+
 首次打开时由家长设置四位数字密码；停在设置界面请家长直接输入，之后继续。已有密码时不重置。按家长要求调整计划；未指定则保留 5 项任务／10 分钟奖励／60 分钟日上限与 KET 阶段。
 
 ## 4. 启用管控并保留其他服务
@@ -74,6 +100,8 @@ adb -s <DEVICE> shell am start -n scfido.learnthenwatch.tv/scfido.learnthenwatch
 4. 回读确认，并观察服务是否实际连接。设置成功不等于服务已连上；需等待并查看应用实时状态或下面的诊断。
 
 不要只把列表覆盖成一个服务，不要清空全部无障碍设置，不要启动 root、设备所有者或持久化提权方案。固件拒绝 shell 写设置时，引导家长在系统界面授权；受限设置也按设备正常交互解锁，不能声称授权已完成。
+
+Android 13 及以上从文件安装后，可能需要家长在「设置 → 应用 → 学后看 → 更多 → 允许受限制的设置」放行，再开启无障碍；菜单以电视实际界面为准。[Google 官方说明](https://support.google.com/android/answer/12623953?hl=zh-Hans) 若固件删除无障碍入口，且现有 ADB 也不能授权，则只交付已确认可用的学习功能，明确观看管控不可用。服务授权反复被清除时，记录固件版本，按下节配置并验证后台恢复。
 
 ```text
 adb -s <DEVICE> shell dumpsys activity service scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.PlaybackAccessService
@@ -115,7 +143,7 @@ adb -s <DEVICE> shell cmd notification disallow_listener scfido.learnthenwatch.t
 
 撤销恢复权限不会自动撤销原观看管控授权；不再需要管控时由家长关闭观看管控或系统无障碍服务。配置失败时，仅还原本次新增的授权，不撤销原本已有权限，不覆盖其他服务列表。
 
-方案参考 aerial-tv 的 [GuardSetup](https://github.com/pengchujin/aerial-tv/blob/ef743413ade4e9c8a98af3e641302309886b61a2/app/src/main/java/app/orchard/tv/guard/GuardSetup.kt)、[RevivalListener](https://github.com/pengchujin/aerial-tv/blob/ef743413ade4e9c8a98af3e641302309886b61a2/app/src/main/java/app/orchard/tv/guard/RevivalListener.kt)，在本项目独立实现。没有采用其桌面接管、账户同步和 ADB 保持开启机制。Android 10 及以下的低内存设备可能不支持通知监听（[Android 官方说明](https://developer.android.com/reference/android/service/notification/NotificationListenerService)）；若系统不再拉起本应用，应用自身无法承诺待机或强停后恢复。
+Android 10 及以下的低内存设备可能不支持通知监听（[Android 官方说明](https://developer.android.com/reference/android/service/notification/NotificationListenerService)）；通知监听不可用或系统禁止后台运行时，请家长在唤醒后重新开启观看管控。
 
 ## 5. 验收与交付
 
