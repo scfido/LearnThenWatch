@@ -24,6 +24,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.AccessibilityWindowInfo;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import java.io.FileDescriptor;
@@ -252,11 +253,31 @@ public final class PlaybackAccessService extends AccessibilityService {
         if (gate != null || shuttingDown) return;
         try {
             if (repository.snapshot().dailyRemainingMs <= 0) { showDailyLimit(); return; }
-            buildStudyGate();
+            showStudyTransition();
         } catch (RuntimeException error) {
             Log.e("LearnThenWatch", "Could not create learning gate", error);
             showError("学习内容暂时无法打开，请重试或请家长检查。");
         }
+    }
+
+    private void showStudyTransition() {
+        final long token = ++generation;
+        LinearLayout intro = simplePage("观看时间到啦", "休息一下，准备开始英语探险\n2 秒后开始答题");
+        intro.setTag("study:transition");
+        attach(intro);
+        intro.setAlpha(0f);
+        intro.animate().alpha(1f).setDuration(350).start();
+        handler.postDelayed(() -> {
+            if (token != generation || gate == null || shuttingDown) return;
+            try {
+                // Keep the same window/audio focus throughout; no player flash or audio resumption.
+                buildStudyGate();
+                TvUiTheme.enter(screen.view());
+            } catch (RuntimeException error) {
+                Log.e("LearnThenWatch", "Could not start lesson after transition", error);
+                showError("学习内容暂时无法打开，请重试或请家长检查。");
+            }
+        }, 2000);
     }
 
     private void buildStudyGate() {
@@ -339,8 +360,9 @@ public final class PlaybackAccessService extends AccessibilityService {
     }
 
     private void attach(View content) {
-        LinearLayout wrapper = new LinearLayout(this) {
+        VolumeFeedbackLayout wrapper = new VolumeFeedbackLayout(this) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
+                if (dispatchVolumeKey(event)) return true;
                 int key = event.getKeyCode();
                 if (key == KeyEvent.KEYCODE_BACK) {
                     if (event.getAction() == KeyEvent.ACTION_UP) leaveToHome();
@@ -352,8 +374,15 @@ public final class PlaybackAccessService extends AccessibilityService {
                 return super.dispatchKeyEvent(event);
             }
         };
-        wrapper.setOrientation(LinearLayout.VERTICAL);
-        wrapper.addView(content, new LinearLayout.LayoutParams(-1, -1));
+        if (gate instanceof VolumeFeedbackLayout) {
+            VolumeFeedbackLayout current = (VolumeFeedbackLayout) gate;
+            current.removeAllViews();
+            current.addView(content, new FrameLayout.LayoutParams(-1, -1));
+            current.requestFocus(View.FOCUS_DOWN);
+            return;
+        }
+        wrapper.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        wrapper.addView(content, new FrameLayout.LayoutParams(-1, -1));
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(-1, -1,
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,

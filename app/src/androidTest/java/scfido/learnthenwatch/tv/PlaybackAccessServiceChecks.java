@@ -171,7 +171,17 @@ final class PlaybackAccessServiceChecks {
         await(() -> gate() != null, 8000, "actual playback exhausts a short balance and shows learning");
         check(repo.snapshot().balanceMs == 0, "expiry is based on persisted zero balance");
         check(SystemClock.elapsedRealtime() - expiryStart < 6500, "gate appears within the one-second sampling tolerance");
+        View transitionGate = gate();
+        main(() -> check(transitionGate.findViewWithTag("study:transition") != null
+                && transitionGate.findViewWithTag("study:option:0") == null, "expiry shows preparation before questions"));
+        int answeredAtExpiry = repo.snapshot().totalAnswered;
+        long usedAtExpiry = repo.snapshot().todayUsedMs;
+        settle(1100);
+        main(() -> check(transitionGate.findViewWithTag("study:transition") != null, "preparation is not an abrupt question switch"));
         checkAnswerNavigation("EXPIRED");
+        check(gate() == transitionGate, "transition retains the same overlay window");
+        check(repo.snapshot().todayUsedMs == usedAtExpiry && repo.snapshot().totalAnswered == answeredAtExpiry,
+                "preparation neither charges viewing nor submits answers");
         String sessionId = repo.currentSession().id;
         phase("BACK", "Press Back on the learning overlay"); command("back");
         await(() -> gate() == null, 5000, "Back exits viewing and removes the overlay"); settle(1200);
@@ -179,7 +189,8 @@ final class PlaybackAccessServiceChecks {
         phase("REENTER", "Return to the video and play"); command("reentered");
         await(() -> gate() != null, 15000, "returning to playback cannot bypass zero balance");
         phase("HOME", "Press Home while learning"); command("home");
-        await(() -> gate() == null, 5000, "Home switches away and removes the overlay"); settle(1300);
+        await(() -> gate() == null, 5000, "Home switches away and removes the overlay"); settle(2300);
+        check(gate() == null, "cancelled preparation never reopens learning after Home");
         check(repo.currentSession().id.equals(sessionId), "Home preserves unfinished learning");
         phase("REENTER_AGAIN", "Return to playback for system rebind"); command("reentered");
         await(() -> gate() != null, 15000, "gate returns after Home");

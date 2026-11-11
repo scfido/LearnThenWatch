@@ -54,8 +54,9 @@ public final class LessonScreen {
     LessonScreen(Context context, LearningRepository repository, Runnable onFinished, Runnable onExit, boolean demo, VocabularyCatalog.Item review) {
         this.context = context; this.repository = repository; this.onFinished = onFinished; this.onExit = onExit; this.demo = demo;
         this.review = review;
-        root = new FrameLayout(context) {
+        root = new VolumeFeedbackLayout(context) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
+                if (dispatchVolumeKey(event)) return true;
                 int key = event.getKeyCode();
                 if (key == KeyEvent.KEYCODE_DPAD_RIGHT && review == null && active != null) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 && !transitioning) {
@@ -204,13 +205,13 @@ public final class LessonScreen {
             LinearLayout.LayoutParams slot = new LinearLayout.LayoutParams(-1, 0, 1); if (n > 0) slot.topMargin = dp(10);
             choices.addView(option, slot); answers.add(option); option.setEnabled(!listening);
         }
-        addReplay(value, listening);
+        if (!"SENTENCE".equals(task.type)) addReplay(value, listening);
         secondary = footerButton(task.correction ? "看提示 →" : "不认识 →", false, () -> answer(task, (task.correct + 1) % task.options.length, true), 150);
         secondary.setTag("study:unknown"); secondary.setEnabled(!listening);
         verticalChoices();
         status.setText("← 重听 · → 不认识");
         if (!listening) answers.get(0).requestFocus(); else root.requestFocus();
-        if (repository.settings().autoSpeak || listening) play(value, listening);
+        if (!"SENTENCE".equals(task.type) && (repository.settings().autoSpeak || listening)) play(value, listening);
     }
     private CharSequence highlight(String sentence, String word) {
         SpannableString text = new SpannableString(sentence);
@@ -293,7 +294,8 @@ public final class LessonScreen {
                 nextAction = this::transitionNext;
                 secondary.setText("下一个 →"); secondary.setEnabled(true);
                 secondary.setOnClickListener(v -> transitionNext());
-                autoAdvance = true; handler.postDelayed(autoNext, 900);
+                autoAdvance = true;
+                if ("SENTENCE".equals(task.type)) handler.postDelayed(autoNext, 900);
             } else {
                 detail(item(task));
                 for (int n = 0; n < answers.size(); n++) {
@@ -302,7 +304,7 @@ public final class LessonScreen {
                     else option.setAlpha(.32f);
                 }
                 clearFooter(unknown ? "← 重听 · 一起记住它" : "← 重听 · 再记一下");
-                addReplay(item(task), false);
+                if (!"SENTENCE".equals(task.type)) addReplay(item(task), false);
                 boolean guided = !demo && task.correction && repository.currentTask(session.id).correctionAttempts >= 2;
                 nextAction = () -> {
                     if (guided) try { repository.confirmGuidedCorrection(session.id, task.id); } catch (RuntimeException e) { failure(e); return; }
@@ -312,6 +314,8 @@ public final class LessonScreen {
                 Button next = footerButton(guided || !task.correction ? "记住了  →" : "再试一次  →", true, () -> nextAction.run(), 162); next.setTag("study:advance"); next.requestFocus();
                 left.setTranslationX(-dp(5)); left.animate().translationX(0).setDuration(170).start();
             }
+            // Replay after every submitted choice; successful answers advance only after playback ends.
+            if (!"SENTENCE".equals(task.type)) play(item(task), false);
         } catch (RuntimeException error) { failure(error); }
     }
     private void clearFooter(String text) {
@@ -345,7 +349,7 @@ public final class LessonScreen {
         detail(item(task));
         LearningMascotView partner = new LearningMascotView(context); partner.happy(); choices.addView(partner, new LinearLayout.LayoutParams(-1, 0, 1));
         fixedText(choices, "一起记住它", 26, 22, 64);
-        clearFooter(""); addReplay(item(task), false);
+        clearFooter(""); if (!"SENTENCE".equals(task.type)) addReplay(item(task), false);
         nextAction = () -> {
             if (submitting) return; submitting = true;
             try { repository.confirmGuidedCorrection(session.id, task.id); transitionNext(); } catch (RuntimeException e) { failure(e); }

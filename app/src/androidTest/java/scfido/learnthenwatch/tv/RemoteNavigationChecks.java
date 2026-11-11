@@ -80,7 +80,10 @@ final class RemoteNavigationChecks {
         key(KeyEvent.KEYCODE_DPAD_UP); checkFocus("study:option:2");
         Task mainTask = repository.currentTask(repository.currentSession().id);
         for (int n = 2; n > mainTask.correct; n--) key(KeyEvent.KEYCODE_DPAD_UP);
-        key(KeyEvent.KEYCODE_DPAD_CENTER); settle(1150);
+        key(KeyEvent.KEYCODE_DPAD_CENTER);
+        long replayDeadline = SystemClock.uptimeMillis() + 8000;
+        while (((Task) field(field(activity, "study"), "active")).id.equals(mainTask.id)
+                && SystemClock.uptimeMillis() < replayDeadline) settle(50);
         Task listening = repository.currentTask(repository.currentSession().id);
         check("LISTEN".equals(listening.type), "correct answer automatically reaches listening");
         for (int n = 0; n < 24 && !enabled("study:option:0"); n++) settle(100);

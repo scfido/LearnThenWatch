@@ -74,7 +74,11 @@ final class LessonLayoutChecks {
         check(find("study:audio-status").getVisibility() != View.VISIBLE, "bottom-left instructional text is hidden");
         check(find("study:replay").getLeft() > screen.view().getWidth() / 2, "shortcut buttons sit at bottom right");
 
-        click("study:unknown"); settle(230);
+        checkVolumeFeedback();
+        long spoken = audioGeneration();
+        click("study:unknown");
+        check(audioGeneration() > spoken + 1, "unknown choice replays pronunciation even with autoSpeak disabled");
+        settle(230);
         check(repository.snapshot().totalAnswered == 1 && repository.snapshot().firstCorrect == 0, "unknown is recorded honestly");
         check(find("study:advance") != null, "incorrect answer has one acknowledgement"); validate(); save("explanation");
         click("study:advance"); settle(250);
@@ -85,14 +89,32 @@ final class LessonLayoutChecks {
         click("study:unknown"); settle(230);
         Session session = repository.currentSession(); Task second = repository.currentTask(session.id);
         check(second.type.equals("WORD") && repository.snapshot().totalAnswered == 1, "fallback preserves uncompleted task");
+        spoken = audioGeneration();
         click("study:option:" + second.correct);
+        check(audioGeneration() > spoken + 1, "correct choice replays pronunciation before advancing");
         check(find("study:advance") == null, "correct answers do not require a continue button");
         settle(300);
         check(find("study:option:" + second.correct) != null, "answer feedback briefly remains before automatic next");
         settle(850);
         Task third = repository.currentTask(session.id);
         check(!third.id.equals(second.id), "correct answer automatically advances"); validate(); save("sentence");
-        click("study:option:" + third.correct); right(); settle(280);
+        check("SENTENCE".equals(third.type), "third fixture exercises sentence blank");
+        settings.autoSpeak = true; repository.saveSettings(settings);
+        attach(create(false, null), 960, 540);
+        check(audioGeneration() == 1, "sentence suppresses automatic pronunciation even when enabled");
+        settings.autoSpeak = false; repository.saveSettings(settings);
+        check(find("study:replay") == null, "sentence blanks have no replay button");
+        spoken = audioGeneration();
+        main(() -> {
+            screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT));
+            screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_LEFT));
+        });
+        check(audioGeneration() == spoken, "left cannot reveal blank answer through audio");
+        checkVolumeFeedback(); // Also exercise a newly rendered page after the first indicator was removed.
+        spoken = audioGeneration();
+        click("study:option:" + third.correct);
+        check(audioGeneration() == spoken + 1, "sentence submission stops audio without starting pronunciation");
+        right(); settle(280);
         Task correction = repository.currentTask(session.id);
         check(correction.correction, "main tasks flow directly into corrections");
         click("study:unknown"); click("study:advance"); settle(220);
@@ -133,6 +155,37 @@ final class LessonLayoutChecks {
         attach(create(true, null), 960, 540); validate();
         click("study:unknown"); click("study:advance"); settle(220);
         check(repository.snapshot().balanceMs == balance && repository.snapshot().learnedCount == learned, "demo remains read-only");
+    }
+    private long audioGeneration() throws Exception {
+        java.lang.reflect.Field player = LessonScreen.class.getDeclaredField("audio"); player.setAccessible(true);
+        java.lang.reflect.Field token = PronunciationPlayer.class.getDeclaredField("generation"); token.setAccessible(true);
+        final long[] result = new long[1];
+        main(() -> { try { result[0] = token.getLong(player.get(screen)); }
+            catch (IllegalAccessException e) { throw new IllegalStateException(e); } });
+        return result[0];
+    }
+    private void checkVolumeFeedback() {
+        android.media.AudioManager manager = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        int original = manager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC);
+        boolean muted = manager.isStreamMute(android.media.AudioManager.STREAM_MUSIC);
+        int count = repository.snapshot().totalAnswered;
+        main(() -> {
+            View focus = screen.view().findFocus();
+            try {
+                screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN));
+                screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN));
+                TextView indicator = (TextView) find("study:volume");
+                check(indicator != null && indicator.getVisibility() == View.VISIBLE, "volume feedback stays above lesson");
+                check(indicator.getText().toString().contains(manager.isStreamMute(android.media.AudioManager.STREAM_MUSIC)
+                        ? "静音" : manager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) + " / "), "volume feedback reads actual media stream");
+                check(screen.view().findFocus() == focus, "volume does not steal answer focus");
+            } finally {
+                manager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, original, 0);
+                manager.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+                        muted ? android.media.AudioManager.ADJUST_MUTE : android.media.AudioManager.ADJUST_UNMUTE, 0);
+            }
+        });
+        check(repository.snapshot().totalAnswered == count, "volume never submits an answer");
     }
     private LessonScreen create(boolean demo, VocabularyCatalog.Item review) {
         final LessonScreen[] result = new LessonScreen[1];
