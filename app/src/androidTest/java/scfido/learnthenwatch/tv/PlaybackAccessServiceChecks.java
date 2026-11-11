@@ -204,11 +204,32 @@ final class PlaybackAccessServiceChecks {
     private void checkAnswerNavigation(String entry) {
         await(() -> focused("study:option:0"), 5000, entry + " gate initially focuses the first answer");
         int answered = repo.snapshot().totalAnswered;
+        main(() -> {
+            try {
+                LearningGateActivity host = (LearningGateActivity) field(PlaybackAccessService.class, "gateActivity").get(PlaybackAccessService.instance);
+                check(host != null && host.hasWindowFocus(), entry + " gate is hosted by a focused activity");
+                check(host.getWindow().getAttributes().type <= android.view.WindowManager.LayoutParams.LAST_APPLICATION_WINDOW,
+                        entry + " learning window stays below native system volume UI");
+            } catch (Exception error) { throw new IllegalStateException(error); }
+        });
         phase(entry + "_DOWN", "Move to the second answer with a real D-pad key"); command("down");
         await(() -> focused("study:option:1"), 3000, entry + " Down selects the second answer");
         phase(entry + "_UP", "Move back to the first answer with a real D-pad key"); command("up");
         await(() -> focused("study:option:0"), 3000, entry + " Up selects the first answer");
         check(repo.snapshot().totalAnswered == answered, entry + " navigation does not submit an answer");
+        int originalVolume = audio().getStreamVolume(AudioManager.STREAM_MUSIC);
+        boolean originalMute = audio().isStreamMute(AudioManager.STREAM_MUSIC);
+        try {
+            phase(entry + "_VOLUME", "Adjust volume through the actual system input path"); command("volume");
+            View currentGate = gate();
+            main(() -> check(currentGate.findViewWithTag("study:volume") == null, entry + " gate adds no custom volume indicator"));
+            check(focused("study:option:0"), entry + " system volume key retains answer focus");
+            check(repo.snapshot().totalAnswered == answered, entry + " system volume key never submits answers");
+        } finally {
+            audio().setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0);
+            audio().adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                    originalMute ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE, 0);
+        }
     }
     private boolean focused(String tag) {
         final boolean[] result = new boolean[1];

@@ -174,10 +174,7 @@ final class LessonLayoutChecks {
             try {
                 screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN));
                 screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_DOWN));
-                TextView indicator = (TextView) find("study:volume");
-                check(indicator != null && indicator.getVisibility() == View.VISIBLE, "volume feedback stays above lesson");
-                check(indicator.getText().toString().contains(manager.isStreamMute(android.media.AudioManager.STREAM_MUSIC)
-                        ? "静音" : manager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) + " / "), "volume feedback reads actual media stream");
+                check(find("study:volume") == null, "learning page adds no custom volume indicator");
                 check(screen.view().findFocus() == focus, "volume does not steal answer focus");
             } finally {
                 manager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, original, 0);

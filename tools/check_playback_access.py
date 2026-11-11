@@ -78,13 +78,17 @@ def power(awake):
 
 
 def player(resume=False):
+    # The learning activity may already be above a confirmed player. Relaunching
+    # the player's singleTask launcher here would clear its video back stack.
+    if "gate=true" in adb("shell", "dumpsys", "activity", "service", monitor):
+        return
     top = adb("shell", "dumpsys", "activity", "activities")
     in_player = any("topResumedActivity=" in line and "com.xiaodianshi.tv.yst" in line
                     and any(name in line for name in ("VideoPlayActivity", "CtsActivity", "PlayerActivity"))
                     for line in top.splitlines())
     if not in_player:
         adb("shell", "am", "start", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
-            "-f", "0x10000000", "-n", "com.xiaodianshi.tv.yst/.ui.main.MainActivity")
+            "-f", "0x10200000", "-n", "com.xiaodianshi.tv.yst/.ui.main.MainActivity")
         time.sleep(1)
         top = adb("shell", "dumpsys", "activity", "activities")
     if any("topResumedActivity=" in line and "/.ui.main.MainActivity" in line for line in top.splitlines()):
@@ -96,6 +100,12 @@ def player(resume=False):
             if any("topResumedActivity=" in line and any(name in line for name in
                    ("VideoPlayActivity", "CtsActivity", "PlayerActivity")) for line in top.splitlines()):
                 break
+    # On this TV's current home layout, DOWN enters the first video row.
+    # Use the normal remote action when cloud-driven cards expose no click action.
+    if any("topResumedActivity=" in line and "/.ui.main.MainActivity" in line for line in top.splitlines()):
+        key("KEYCODE_DPAD_DOWN")
+        key("KEYCODE_DPAD_CENTER")
+        time.sleep(1)
     if resume:
         audio = adb("shell", "dumpsys", "audio")
         playing = any("AudioPlaybackConfiguration" in line and "com.xiaodianshi.tv.yst" in line
@@ -136,6 +146,32 @@ try:
                 if event == "EXPIRED_UP":
                     capture_focus("expired-answer-a.png")
                 command("up")
+            elif event in ("INITIAL_VOLUME", "EXPIRED_VOLUME"):
+                key("KEYCODE_VOLUME_UP")
+                deadline = time.monotonic() + 2
+                volume_windows = []
+                while not volume_windows and time.monotonic() < deadline:
+                    window_dump = adb("shell", "dumpsys", "window")
+                    volume_windows = [w for w in re.split(r"(?m)^  Window #", window_dump)[1:]
+                                      if "ty=VOLUME_OVERLAY" in w and "Surface: shown=true" in w]
+                    if not volume_windows:
+                        time.sleep(.1)
+                if args.screenshots_dir:
+                    args.screenshots_dir.mkdir(parents=True, exist_ok=True)
+                    (args.screenshots_dir / (event.lower() + "-windows.txt")).write_text(window_dump, encoding="utf-8")
+                if not volume_windows:
+                    raise RuntimeError("TV system volume window is not shown")
+                ordered_windows = re.split(r"(?m)^  Window #", window_dump)[1:]
+                gate_order = next((i for i, w in enumerate(ordered_windows) if "LearningGateActivity}" in w), None)
+                volume_order = next(i for i, w in enumerate(ordered_windows) if w == volume_windows[0])
+                if gate_order is None or volume_order >= gate_order:
+                    raise RuntimeError("TV system volume is covered by the learning window")
+                if args.screenshots_dir:
+                    args.screenshots_dir.mkdir(parents=True, exist_ok=True)
+                    (args.screenshots_dir / (event.lower() + "-system-window.txt")).write_text(
+                        volume_windows[0], encoding="utf-8")
+                capture_focus(event.lower() + ".png")
+                command("volume")
             elif event == "SLEEP":
                 power(False); command("asleep")
             elif event == "WAKE":

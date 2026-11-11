@@ -41,6 +41,9 @@ public final class PlaybackAccessPolicyTest {
         window.activity("com.android.systemui", "VolumeDialog", 12);
         check(window.root("com.android.systemui", 12, false, true) == UNKNOWN, "system panels suspend confirmation");
         check(window.root("english", 13, false, true) == PLAYER, "system panel does not discard the learning session");
+        window.activity("english", "LearningGateActivity", 13);
+        check(!window.definitelyOther(), "learning activity does not invalidate its confirmed player");
+        check(window.root("english", 13, false, true) == PLAYER, "application-hosted gate retains the player while focused");
         window.activity("english", "MainActivity", 14);
         check(window.definitelyOther(), "opening the launcher dismisses a service gate");
         window.reset();

@@ -6,7 +6,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.graphics.Color;
-import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
@@ -18,7 +17,6 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityManager;
@@ -41,7 +39,8 @@ public final class PlaybackAccessService extends AccessibilityService {
     private LearningRepository repository;
     private AudioManager audio;
     private AudioFocusRequest focus;
-    private WindowManager windows;
+    private LearningGateActivity gateActivity;
+    private long gateWindow;
     private View gate;
     private LessonScreen screen;
     private boolean focusHeld;
@@ -102,7 +101,6 @@ public final class PlaybackAccessService extends AccessibilityService {
         shuttingDown = false;
         instance = this;
         repository = null;
-        windows = (WindowManager) getSystemService(WINDOW_SERVICE);
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                 .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
@@ -149,7 +147,8 @@ public final class PlaybackAccessService extends AccessibilityService {
                     AccessibilityNodeInfo app = window.getRoot(); if (app == null) continue;
                     try {
                         String owner = String.valueOf(app.getPackageName());
-                        if ("android".equals(owner) || "com.android.systemui".equals(owner)) continue;
+                        if ("android".equals(owner) || "com.android.systemui".equals(owner)
+                                || (gate != null && getPackageName().equals(owner))) continue;
                         return playback.root(owner, app.getWindowId(), TARGET.equals(owner) && hasPlayer(app), false);
                     } finally { app.recycle(); }
                 }
@@ -158,7 +157,8 @@ public final class PlaybackAccessService extends AccessibilityService {
                 if (root != null) root.recycle();
             }
             // A missing application window is transient, not proof the child left the player.
-            return PlayerWindowTracker.State.UNKNOWN;
+            return gateActivity != null && gateActivity.hasWindowFocus()
+                    ? playback.root(getPackageName(), -1, false, true) : PlayerWindowTracker.State.UNKNOWN;
         }
         try {
             String owner = String.valueOf(root.getPackageName());
@@ -360,9 +360,9 @@ public final class PlaybackAccessService extends AccessibilityService {
     }
 
     private void attach(View content) {
-        VolumeFeedbackLayout wrapper = new VolumeFeedbackLayout(this) {
+        FrameLayout wrapper = new FrameLayout(this) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
-                if (dispatchVolumeKey(event)) return true;
+                if (SystemVolumeKeys.dispatch(PlaybackAccessService.this, event)) return true;
                 int key = event.getKeyCode();
                 if (key == KeyEvent.KEYCODE_BACK) {
                     if (event.getAction() == KeyEvent.ACTION_UP) leaveToHome();
@@ -374,8 +374,8 @@ public final class PlaybackAccessService extends AccessibilityService {
                 return super.dispatchKeyEvent(event);
             }
         };
-        if (gate instanceof VolumeFeedbackLayout) {
-            VolumeFeedbackLayout current = (VolumeFeedbackLayout) gate;
+        if (gate instanceof FrameLayout) {
+            FrameLayout current = (FrameLayout) gate;
             current.removeAllViews();
             current.addView(content, new FrameLayout.LayoutParams(-1, -1));
             current.requestFocus(View.FOCUS_DOWN);
@@ -383,20 +383,36 @@ public final class PlaybackAccessService extends AccessibilityService {
         }
         wrapper.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
         wrapper.addView(content, new FrameLayout.LayoutParams(-1, -1));
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(-1, -1,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.OPAQUE);
-        params.setTitle("LearnThenWatchGate");
+        gate = wrapper;
         try {
-            windows.addView(wrapper, params); gate = wrapper;
-            clock.reset(); acquireFocus(); wrapper.requestFocus(View.FOCUS_DOWN);
-            Log.i("LearnThenWatch", "Learning gate shown");
+            clock.reset(); acquireFocus();
+            long window = ++gateWindow;
+            startActivity(new Intent(this, LearningGateActivity.class)
+                    .putExtra("gateWindow", window)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+            Log.i("LearnThenWatch", "Learning gate application window requested");
         } catch (RuntimeException error) {
             dismissGate();
             status(PlaybackAccessStatus.Kind.ERROR, "未生效 · 无法显示学习页面，请家长检查");
-            Log.e("LearnThenWatch", "Could not attach learning gate", error);
+            Log.e("LearnThenWatch", "Could not open learning gate", error);
         }
+    }
+
+    boolean attachGateActivity(LearningGateActivity activity, long window) {
+        if (shuttingDown || gate == null || window != gateWindow) return false;
+        gateActivity = activity; activity.showGate(gate);
+        if (screen != null) screen.resume();
+        return true;
+    }
+
+    void gateActivityStopped(LearningGateActivity activity) {
+        if (activity == gateActivity) { dismissGate(); clock.reset(); }
+    }
+
+    void gateActivityDestroyed(LearningGateActivity activity, boolean changingConfiguration) {
+        if (activity != gateActivity) return;
+        if (changingConfiguration) { activity.releaseGate(gate); gateActivity = null; }
+        else { dismissGate(); clock.reset(); }
     }
 
     private void leaveToHome() {
@@ -408,9 +424,11 @@ public final class PlaybackAccessService extends AccessibilityService {
         handler.removeCallbacks(retryFocus);
         generation++; gateError = null;
         if (screen != null) { screen.close(); screen = null; }
-        if (gate != null && windows != null) {
-            try { windows.removeViewImmediate(gate); }
-            catch (RuntimeException error) { Log.w("LearnThenWatch", "Gate already detached", error); }
+        LearningGateActivity activity = gateActivity;
+        gateActivity = null;
+        if (activity != null) {
+            activity.releaseGate(gate);
+            activity.finishAndRemoveTask();
         }
         gate = null;
         if (focusRequested && audio != null && focus != null) try { audio.abandonAudioFocusRequest(focus); }

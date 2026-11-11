@@ -1,0 +1,12 @@
+<resources>
+    <!-- A translucent application window keeps the underlying player identifiable,
+         while all learning content is opaque. Native volume UI stays above it. -->
+    <style name="LearningGateTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>

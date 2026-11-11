@@ -46,6 +46,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         try {
             repository = LearningRepository.get(this);
             if (state != null) {

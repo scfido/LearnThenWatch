@@ -54,9 +54,9 @@ public final class LessonScreen {
     LessonScreen(Context context, LearningRepository repository, Runnable onFinished, Runnable onExit, boolean demo, VocabularyCatalog.Item review) {
         this.context = context; this.repository = repository; this.onFinished = onFinished; this.onExit = onExit; this.demo = demo;
         this.review = review;
-        root = new VolumeFeedbackLayout(context) {
+        root = new FrameLayout(context) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
-                if (dispatchVolumeKey(event)) return true;
+                if (SystemVolumeKeys.dispatch(context, event)) return true;
                 int key = event.getKeyCode();
                 if (key == KeyEvent.KEYCODE_DPAD_RIGHT && review == null && active != null) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 && !transitioning) {
