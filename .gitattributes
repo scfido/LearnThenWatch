@@ -6,6 +6,9 @@ gradlew text eol=lf
 *.py text eol=lf
 *.yml text eol=lf
 *.md text eol=lf
+*.html text eol=lf
 *.png binary
+*.jpg binary
+*.jpeg binary
 *.mp3 binary
 *.jar binary
