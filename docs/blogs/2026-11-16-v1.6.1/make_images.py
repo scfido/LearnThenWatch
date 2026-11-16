@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成学后看 v1.6.1 公众号封面与更新速览图（可复用：改文案后重跑即可）。"""
+"""生成「学后看 · 电视英语」v1.6.1 公众号封面与更新速览图（可复用：改文案后重跑即可）。"""
 import os
 import random
 from PIL import Image, ImageDraw, ImageFont
@@ -140,13 +140,14 @@ def cover():
     d.line([S(466), S(296), S(466), S(302)], fill=ORANGE, width=S(3))
     d.line([S(482), S(296), S(482), S(302)], fill=ORANGE, width=S(3))
 
-    # 左侧文字
+    # 左侧文字：品牌组合 + 固定句
     rr(d, (48, 42, 246, 76), 17, ORANGE)
     tx(d, (64, 50), "v1.6.1 · 本周三次更新", F(FONT_B, 14), WHITE)
-    tx(d, (48, 100), "学后看，更新了", F(FONT_B, 46), GREEN)
-    rr(d, (48, 172, 104, 178), 3, ORANGE)
-    tx(d, (48, 196), "待机醒来，管控还在", F(FONT_R, 22), DARK)
-    tx(d, (48, 232), "答题、音量、安装也都顺了", F(FONT_R, 17), SOFT)
+    tx(d, (48, 100), "学后看 · 电视英语", F(FONT_B, 38), GREEN)
+    rr(d, (48, 168, 104, 174), 3, ORANGE)
+    tx(d, (48, 190), "更新了：待机醒来，管控还在", F(FONT_R, 22), DARK)
+    tx(d, (48, 226), "先学一轮英语，再看一会儿电视", F(FONT_R, 17), SOFT)
+    tx(d, (48, 258), "答题、音量、安装也都顺了", F(FONT_R, 15), SOFT)
     tx(d, (48, 330), "LearnThenWatch · 开源电视英语学习", F(FONT_R, 14), GREEN)
 
     im.resize((W, H), Image.LANCZOS).save(os.path.join(OUT, "cover.png"))
@@ -182,7 +183,7 @@ def updates():
             tx(d, (x + 20, y), line, F(FONT_R, 14), DARK)
             y += 22
 
-    tx(d, (48, 352), "学后看 · LearnThenWatch ｜ 完整更新记录见仓库 CHANGELOG.md", F(FONT_R, 13), SOFT)
+    tx(d, (48, 352), "学后看 · 电视英语 ｜ LearnThenWatch ｜ 完整更新记录见仓库 CHANGELOG.md", F(FONT_R, 13), SOFT)
 
     im.resize((W, H), Image.LANCZOS).save(os.path.join(OUT, "updates.png"))
     print("updates.png", W, H)

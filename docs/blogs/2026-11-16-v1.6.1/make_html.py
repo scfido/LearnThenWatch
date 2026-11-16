@@ -9,8 +9,8 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 MD = os.path.join(BASE, "学后看-v1.6.1-公众号文章.md")
 HTML = os.path.join(BASE, "学后看-v1.6.1-公众号文章.html")
 
-TITLE = "学后看更新了：待机醒来，管控还在"
-SUMMARY = "一周连发三个版本：待机唤醒自动恢复观看管控、答题朗读与到时缓冲调整、把挡住系统音量条的那一层拆掉。老用户需要补做一次配置。"
+TITLE = "学后看 · 电视英语：待机醒来，管控还在"
+SUMMARY = "学后看 · 电视英语一周连发三个版本：待机唤醒自动恢复观看管控、答题朗读与到时缓冲调整、把挡住系统音量条的那一层拆掉。老用户需要补做一次配置。"
 
 src = open(MD, encoding="utf-8").read()
 article = src.split("<!-- ARTICLE_START -->")[1].split("<!-- ARTICLE_END -->")[0].strip()
@@ -89,7 +89,7 @@ doc = """<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>学后看 · v1.6.1 公众号文章</title>
+<title>学后看 · 电视英语 · v1.6.1 公众号文章</title>
 <style>
   body{margin:0;padding:28px 12px 60px;background:#f2f2f0;
        font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif;}
