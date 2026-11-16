@@ -35,6 +35,7 @@ final class LessonLayoutChecks {
     private int assertions;
     private final String database = "instrumentation-ui.db", preferences = "instrumentation-ui-settings";
     private int finished;
+    private int returnedHome;
 
     private LessonLayoutChecks(Instrumentation instrument, Context context) { this.instrument = instrument; this.context = context; }
     static int run(Instrumentation instrument, Context context) throws Exception {
@@ -66,6 +67,7 @@ final class LessonLayoutChecks {
         }, database, preferences);
         repository.setPin("2468");
         ParentSettings settings = repository.settings(); settings.taskCount = 3; settings.autoSpeak = false; repository.saveSettings(settings);
+        checkPreparation();
         attach(create(false, null), 960, 540);
         check(repository.currentTask(repository.currentSession().id).needsIntro == false, "no separate new-word confirmation page");
         validate(); save("question");
@@ -125,7 +127,23 @@ final class LessonLayoutChecks {
         check(repository.snapshot().totalAnswered == 3 && repository.snapshot().firstCorrect == 2, "UI preserves first-attempt stats");
         check(find("study:finish") != null, "completion has one explicit viewing action"); validate(); save("complete");
         check("已完成 3 / 3".contentEquals(find("study:progress").getContentDescription()), "completion progress follows configured task count");
+        check(find("study:home") != null, "completion offers learning home independently of viewing");
+        main(() -> {
+            View done = find("study:finish"), home = find("study:home");
+            check(done.hasFocus() && done.getNextFocusLeftId() == home.getId()
+                    && home.getNextFocusRightId() == done.getId(), "completion actions have connected D-pad focus");
+        });
+        click("study:home"); click("study:home");
+        check(returnedHome == 1 && finished == 0, "home action runs once without continuing playback");
+        main(() -> screen.resume()); settle(230);
         click("study:finish"); click("study:finish"); check(finished == 1, "repeated finish click invokes viewing once");
+        // A later quota change must be rechecked even if the finish button was already enabled.
+        main(() -> screen.resume()); settle(230);
+        repository.consumeViewing(repository.snapshot().balanceMs);
+        click("study:finish");
+        main(() -> check(!find("study:finish").isEnabled() && find("study:home").hasFocus(),
+                "exhausted allowance disables viewing and focuses learning home"));
+        check(finished == 1, "exhausted allowance never invokes playback callback");
 
         // Pausing on answer feedback resumes from the persisted next task.
         attach(create(false, null), 960, 540);
@@ -155,6 +173,44 @@ final class LessonLayoutChecks {
         attach(create(true, null), 960, 540); validate();
         click("study:unknown"); click("study:advance"); settle(220);
         check(repository.snapshot().balanceMs == balance && repository.snapshot().learnedCount == learned, "demo remains read-only");
+    }
+    private void checkPreparation() throws Exception {
+        ParentSettings settings = repository.settings(); settings.autoSpeak = true; repository.saveSettings(settings);
+        final LessonScreen[] pending = new LessonScreen[1];
+        main(() -> pending[0] = new LessonScreen(activity, repository, () -> finished++, () -> { },
+                () -> returnedHome++, false, null, true));
+        attach(pending[0], 960, 540);
+        long spoken = audioGeneration();
+        View first = find("study:option:0");
+        main(() -> {
+            check(first != null && !first.isEnabled(), "preparation displays the actual disabled question");
+            screen.beginPreparation();
+            screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT));
+            screen.view().dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_RIGHT));
+            first.performClick();
+        });
+        settle(1100);
+        check(repository.snapshot().totalAnswered == 0 && audioGeneration() == spoken,
+                "preparation blocks shortcuts, clicks and automatic pronunciation");
+        main(() -> check(!first.isEnabled(), "preparation lasts beyond one second"));
+        settle(1100);
+        main(() -> check(first == find("study:option:0") && first.isEnabled() && first.hasFocus(),
+                "preparation enables and focuses the existing first answer without redrawing"));
+        main(() -> {
+            // Focus movement is completed by ViewRootImpl, outside a direct View.dispatchKeyEvent.
+            // The playback suite sends actual adb D-pad events through that system path.
+            check(first.focusSearch(View.FOCUS_DOWN) == find("study:option:1"),
+                    "the next enabled answer is reachable after preparation");
+        });
+        check(audioGeneration() > spoken, "automatic pronunciation starts after preparation");
+        main(() -> pending[0] = new LessonScreen(activity, repository, () -> finished++, () -> { },
+                () -> returnedHome++, false, null, true));
+        attach(pending[0], 960, 540);
+        main(() -> { screen.beginPreparation(); screen.close(); });
+        spoken = audioGeneration(); settle(2200);
+        check(audioGeneration() == spoken && repository.snapshot().totalAnswered == 0,
+                "closed preparation cancels pending audio and leaves answers unchanged");
+        settings.autoSpeak = false; repository.saveSettings(settings);
     }
     private long audioGeneration() throws Exception {
         java.lang.reflect.Field player = LessonScreen.class.getDeclaredField("audio"); player.setAccessible(true);
@@ -186,7 +242,8 @@ final class LessonLayoutChecks {
     }
     private LessonScreen create(boolean demo, VocabularyCatalog.Item review) {
         final LessonScreen[] result = new LessonScreen[1];
-        main(() -> result[0] = new LessonScreen(activity, repository, () -> finished++, () -> { }, demo, review));
+        main(() -> result[0] = new LessonScreen(activity, repository, () -> finished++, () -> { },
+                () -> returnedHome++, demo, review, false));
         return result[0];
     }
     private void attach(LessonScreen value, int widthDp, int heightDp) {

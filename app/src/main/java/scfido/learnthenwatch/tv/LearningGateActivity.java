@@ -27,7 +27,7 @@ public final class LearningGateActivity extends Activity {
     private void bindGate() {
         owner = PlaybackAccessService.instance;
         if (owner == null || !owner.attachGateActivity(this, getIntent().getLongExtra("gateWindow", -1)))
-            finishAndRemoveTask();
+            finish();
     }
 
     void showGate(View gate) {

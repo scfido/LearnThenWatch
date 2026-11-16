@@ -79,7 +79,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "学后看 $GITHUB_REF_NAME" --notes-file build/release/release-notes.md build/release/*.apk build/release/SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "学后看 · 电视英语 $GITHUB_REF_NAME" --notes-file build/release/release-notes.md build/release/*.apk build/release/SHA256SUMS
       - name: Remove temporary signing key
         if: always()
         run: rm -f -- "$RUNNER_TEMP/learnthenwatch-release.jks"

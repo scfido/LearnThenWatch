@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".VolumeFadeProbeActivity" android:exported="true"
+            android:excludeFromRecents="true" android:taskAffinity="${applicationId}.volumeprobe"
+            android:theme="@style/LearningGateTheme" />
+    </application>
+</manifest>

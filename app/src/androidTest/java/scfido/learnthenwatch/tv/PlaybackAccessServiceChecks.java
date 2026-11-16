@@ -51,6 +51,7 @@ final class PlaybackAccessServiceChecks {
             PlaybackAccessService service = PlaybackAccessService.instance;
             if (!installed || service == null) return;
             View overlay = (View) serviceGate.get(service);
+            if (overlay == null) overlay = warningView();
             if (overlay == null) return;
             // Draw the actual laid-out overlay: secure player surfaces can block screencap.
             Bitmap image = Bitmap.createBitmap(overlay.getWidth(), overlay.getHeight(), Bitmap.Config.ARGB_8888);
@@ -98,6 +99,7 @@ final class PlaybackAccessServiceChecks {
     }
     private void run() throws Exception {
         check(PlaybackAccessService.instance == null, "disable only the English service before isolated monitor checks");
+        assertions += VolumeFadeDeviceChecks.run(instrument, context);
         context.deleteDatabase(database); context.getSharedPreferences(preferences, 0).edit().clear().commit();
         VocabularyCatalog curriculum;
         try (InputStreamReader reader = new InputStreamReader(context.getAssets().open("curriculum.tsv"), "UTF-8")) { curriculum = VocabularyCatalog.load(reader); }
@@ -143,10 +145,11 @@ final class PlaybackAccessServiceChecks {
             try {
                 Object activeScreen = studyScreen.get(service);
                 if (activeScreen == null) throw new AssertionError("Player left the foreground during the award; dismiss player dialogs before rerunning monitor checks");
-                ((Runnable) onFinished.get(activeScreen)).run();
+                ((LessonScreen) activeScreen).resume();
             }
             catch (IllegalAccessException e) { throw new IllegalStateException(e); }
         });
+        phase("RESULT_CONTINUE", "Select the real completion-page Continue button"); command("continue");
         await(() -> gate() == null && repo.snapshot().todayUsedMs > 1000, 15000, "completion releases overlay/focus and actual playback resumes counting");
         phase("PAUSE", "Pause the real player"); command("paused");
         settle(1500);
@@ -166,19 +169,62 @@ final class PlaybackAccessServiceChecks {
             phase("RESUME", "Resume playback; physical standby explicitly excluded on this firmware"); command("resumed");
             await(() -> repo.snapshot().todayUsedMs > paused, 15000, "actual resumed playback counts again");
         }
-        repo.consumeViewing(Math.max(0, repo.snapshot().balanceMs - 4000));
+        repo.consumeViewing(Math.max(0, repo.snapshot().balanceMs - 32000));
+        check(warningView() == null, "no warning before the final thirty seconds");
+        await(() -> warningView() != null, 6000, "final thirty seconds show the thin warning");
+        main(() -> {
+            View warning = warningView();
+            android.view.WindowManager.LayoutParams params = (android.view.WindowManager.LayoutParams) warning.getLayoutParams();
+            check(params.height == TvUiTheme.dp(context, 4)
+                    && (params.flags & android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0
+                    && (params.flags & android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) != 0,
+                    "warning is four dp high and cannot intercept remote input");
+        });
+        phase("WARNING_PAUSE", "Pause while the warning is visible"); command("paused"); settle(1500);
+        check(!audio().isMusicActive(), "warning pause actually stops player audio");
+        long warningPaused = repo.snapshot().balanceMs;
+        settle(1600);
+        check(repo.snapshot().balanceMs == warningPaused && warningView() != null,
+                "pausing freezes the real countdown balance and retains its strip; before=" + warningPaused
+                        + " after=" + repo.snapshot().balanceMs + " visible=" + (warningView() != null));
+        phase("WARNING_RESUME", "Resume the final viewing seconds"); command("resumed");
+        await(() -> repo.snapshot().balanceMs <= 8500, 35000, "continuous warning counts down toward the fade");
+        phase("COUNTDOWN", "Record the countdown and the actual video-to-lesson transition"); command("countdown");
         long expiryStart = SystemClock.elapsedRealtime();
-        await(() -> gate() != null, 8000, "actual playback exhausts a short balance and shows learning");
+        int fadeOriginal = audio().getStreamVolume(AudioManager.STREAM_MUSIC);
+        check(fadeOriginal > 1 && !audio().isStreamMute(AudioManager.STREAM_MUSIC), "fade starts from an audible original level");
+        await(() -> repo.snapshot().balanceMs <= 3000, 12000, "final three seconds start fading");
+        phase("FADE", "Observe silent volume changes during the real player fade");
+        int lowest = fadeOriginal;
+        boolean intermediate = false;
+        long fadeDeadline = SystemClock.elapsedRealtime() + 6000;
+        while (gate() == null && SystemClock.elapsedRealtime() < fadeDeadline) {
+            int level = audio().getStreamVolume(AudioManager.STREAM_MUSIC);
+            check(level <= lowest, "player fade is monotonic"); lowest = level;
+            if (level > 0 && level < fadeOriginal) intermediate = true;
+            settle(80);
+        }
+        check(intermediate, "actual video volume decreases through intermediate levels");
+        check(lowest == 0 || audio().getStreamVolume(AudioManager.STREAM_MUSIC) == 0, "video fades to zero before lesson");
+        await(() -> gate() != null, 3000, "actual playback exhausts a short balance and shows learning");
         check(repo.snapshot().balanceMs == 0, "expiry is based on persisted zero balance");
-        check(SystemClock.elapsedRealtime() - expiryStart < 6500, "gate appears within the one-second sampling tolerance");
+        check(SystemClock.elapsedRealtime() - expiryStart < 12500, "gate follows the remaining countdown without an extra waiting page");
+        check(warningView() == null, "expiry removes the warning window");
         View transitionGate = gate();
-        main(() -> check(transitionGate.findViewWithTag("study:transition") != null
-                && transitionGate.findViewWithTag("study:option:0") == null, "expiry shows preparation before questions"));
+        main(() -> check(transitionGate.findViewWithTag("study:transition") == null
+                && transitionGate.findViewWithTag("study:option:0") != null, "expiry shows questions without a separate waiting page"));
         int answeredAtExpiry = repo.snapshot().totalAnswered;
         long usedAtExpiry = repo.snapshot().todayUsedMs;
         settle(1100);
-        main(() -> check(transitionGate.findViewWithTag("study:transition") != null, "preparation is not an abrupt question switch"));
+        main(() -> {
+            View answer = transitionGate.findViewWithTag("study:option:0");
+            check(answer != null && !answer.isEnabled(), "visible questions remain locked during preparation");
+            transitionGate.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_RIGHT));
+            transitionGate.dispatchKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_RIGHT));
+        });
         checkAnswerNavigation("EXPIRED");
+        check(audio().getStreamVolume(AudioManager.STREAM_MUSIC) == fadeOriginal
+                && !audio().isStreamMute(AudioManager.STREAM_MUSIC), "lesson restores the exact pre-fade volume and mute state");
         check(gate() == transitionGate, "transition retains the same overlay window");
         check(repo.snapshot().todayUsedMs == usedAtExpiry && repo.snapshot().totalAnswered == answeredAtExpiry,
                 "preparation neither charges viewing nor submits answers");
@@ -199,7 +245,39 @@ final class PlaybackAccessServiceChecks {
         await(() -> PlaybackAccessService.instance != null && PlaybackAccessService.instance != old && gate() != null, 15000, "actual system unbind/rebind recreates one gate");
         check(repo.currentSession().id.equals(sessionId) && repo.snapshot().balanceMs == 0, "system rebind retains task and balance");
         check(repo.snapshot().todayRounds == 1, "lifecycle events never issue duplicate rewards");
+        Session homeRound = repo.currentSession();
+        while ((task = repo.currentTask(homeRound.id)) != null) {
+            if (task.needsIntro) repo.introduceItem(homeRound.id, task.id);
+            repo.submitAnswer(homeRound.id, task.id, task.correct);
+        }
+        repo.completeAndGrant(homeRound.id);
+        main(() -> {
+            try { ((LessonScreen) studyScreen.get(PlaybackAccessService.instance)).resume(); }
+            catch (IllegalAccessException error) { throw new IllegalStateException(error); }
+        });
+        android.app.Instrumentation.ActivityMonitor homeMonitor = instrument.addMonitor(MainActivity.class.getName(), null, false);
+        try {
+            phase("RESULT_HOME", "Select the real completion-page Learning Home button"); command("result_home");
+            android.app.Activity home = instrument.waitForMonitorWithTimeout(homeMonitor, 5000);
+            check(home != null && gate() == null, "learning-home action closes the gate and opens the app");
+            main(() -> check(home.getWindow().getDecorView().findViewWithTag("home:watch") != null,
+                    "completion opens learning home rather than an old question page"));
+        } finally { instrument.removeMonitor(homeMonitor); }
         phase("DONE", "All monitor assertions passed");
+    }
+    private View warningView() {
+        final View[] result = new View[1];
+        Runnable read = () -> {
+            try {
+                PlaybackAccessService service = PlaybackAccessService.instance;
+                if (service == null) return;
+                Object overlay = field(PlaybackAccessService.class, "transitionOverlay").get(service);
+                if (overlay != null) result[0] = (View) field(PlaybackTransitionOverlay.class, "warning").get(overlay);
+            } catch (Exception error) { throw new IllegalStateException(error); }
+        };
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) read.run();
+        else main(read);
+        return result[0];
     }
     private void checkAnswerNavigation(String entry) {
         await(() -> focused("study:option:0"), 5000, entry + " gate initially focuses the first answer");

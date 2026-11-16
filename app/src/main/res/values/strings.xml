@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">电视英语</string>
+    <string name="product_name">学后看 · 电视英语</string>
+    <string name="playback_access_label">电视英语 · 观看管控</string>
+    <string name="monitor_revival_label">电视英语 · 后台恢复</string>
+    <string name="open_app">打开电视英语</string>
+</resources>

@@ -1,8 +1,8 @@
-# 学后看部署手册（供 Agent 执行）
+# 学后看 · 电视英语部署手册（供 Agent 执行）
 
 本手册供 TRAE、腾讯 WorkBuddy、Codex、Claude Code、Cursor Agent 等电脑端智能体执行。家长需要完成的 ADB 开启、配对与授权操作见[安装指南](INSTALL.md)。
 
-操作范围为「学后看」正式 APP，保留电视上的其他应用、用户数据与系统服务。向家长说明问题时使用日常语言，明确下一步需要按哪个按钮或打开哪个页面。
+操作范围为「学后看 · 电视英语」正式 APP，保留电视上的其他应用、用户数据与系统服务。向家长说明问题时使用日常语言，明确下一步需要按哪个按钮或打开哪个页面。
 
 ## 输入与身份
 
@@ -80,7 +80,7 @@ adb -s <DEVICE> shell am start -n scfido.learnthenwatch.tv/scfido.learnthenwatch
 | 创维等 `INSTALL_FAILED_USER_RESTRICTED` | 检查电视「安装未知应用」开关及安装确认提示；仍受限时，改用 U 盘或厂商提供的安装入口，保留系统安装校验设置 |
 | 提示禁止桌面类应用 | 核对 APK 包名为 `scfido.learnthenwatch.tv`，确认下载的是正式发布包；仍失败时记录原始错误，按完整型号和固件版本排查 |
 
-ADB 已授权但安装通道被拒绝时，可将已验证的学后看 APK 放到电视下载目录，再请家长用**已有**文件管理器打开：
+ADB 已授权但安装通道被拒绝时，可将已验证的学后看 · 电视英语 APK 放到电视下载目录，再请家长用**已有**文件管理器打开：
 
 ```text
 adb -s <DEVICE> push <已验证的正式APK> /sdcard/Download/LearnThenWatch-install.apk
@@ -92,7 +92,7 @@ adb -s <DEVICE> push <已验证的正式APK> /sdcard/Download/LearnThenWatch-ins
 
 ## 4. 启用管控并保留其他服务
 
-优先从应用「家长配置 → 监控检查」进入电视无障碍设置，启用「学后看 · 观看管控」。已有 ADB 授权的设备若允许 shell 修改设置，可执行等价操作：
+优先从应用「家长配置 → 监控检查」进入电视无障碍设置，启用「电视英语 · 观看管控」。已有 ADB 授权的设备若允许 shell 修改设置，可执行等价操作：
 
 1. **重新读取**当前无障碍列表，按冒号分隔为组件；`null` 或空值视为空列表。
 2. 若本项目调试版服务正在运行，在家长确认后停用该调试服务；保留其他应用的服务，使用组件的展开全名比对，避免误判短写形式。
@@ -101,7 +101,7 @@ adb -s <DEVICE> push <已验证的正式APK> /sdcard/Download/LearnThenWatch-ins
 
 不要只把列表覆盖成一个服务，不要清空全部无障碍设置，不要启动 root、设备所有者或持久化提权方案。固件拒绝 shell 写设置时，引导家长在系统界面授权；受限设置也按设备正常交互解锁，不能声称授权已完成。
 
-Android 13 及以上从文件安装后，可能需要家长在「设置 → 应用 → 学后看 → 更多 → 允许受限制的设置」放行，再开启无障碍；菜单以电视实际界面为准。[Google 官方说明](https://support.google.com/android/answer/12623953?hl=zh-Hans) 若固件删除无障碍入口，且现有 ADB 也不能授权，则只交付已确认可用的学习功能，明确观看管控不可用。服务授权反复被清除时，记录固件版本，按下节配置并验证后台恢复。
+Android 13 及以上从文件安装后，可能需要家长在「设置 → 应用 → 电视英语 → 更多 → 允许受限制的设置」放行，再开启无障碍；菜单以电视实际界面为准。[Google 官方说明](https://support.google.com/android/answer/12623953?hl=zh-Hans) 若固件删除无障碍入口，且现有 ADB 也不能授权，则只交付已确认可用的学习功能，明确观看管控不可用。服务授权反复被清除时，记录固件版本，按下节配置并验证后台恢复。
 
 ```text
 adb -s <DEVICE> shell dumpsys activity service scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.PlaybackAccessService
@@ -112,7 +112,7 @@ adb -s <DEVICE> logcat -d -s LearnThenWatch:I
 
 ### 可选：开机与待机后的后台恢复
 
-1.5.5 起提供此功能，部署前确认所选 Release 包含 `MonitorRevivalService`；旧版不能执行以下授权。先说明并确认家长需要后台恢复：这会允许学后看恢复自己的无障碍服务；关闭管控请使用受 PIN 保护的「家长配置 → 观看管控」。通知访问的系统权限范围较宽，但实现不读取、保存或上传通知内容。
+1.5.5 起提供此功能，部署前确认所选 Release 包含 `MonitorRevivalService`；旧版不能执行以下授权。先说明并确认家长需要后台恢复：这会允许学后看 · 电视英语恢复自己的无障碍服务；关闭管控请使用受 PIN 保护的「家长配置 → 观看管控」。通知访问的系统权限范围较宽，但实现不读取、保存或上传通知内容。
 
 仅在已安装正确版本、设置家长 PIN 并开启观看管控后执行。记录本包原 `WRITE_SECURE_SETTINGS` 授权和通知监听授权，保留其他监听服务：
 
@@ -123,9 +123,9 @@ adb -s <DEVICE> shell pm grant scfido.learnthenwatch.tv android.permission.WRITE
 adb -s <DEVICE> shell cmd notification allow_listener scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.MonitorRevivalService
 ```
 
-首条输出仅在本地检查 `android.permission.WRITE_SECURE_SETTINGS: granted=true`，不要公开整份设备信息。`allow_listener` 只添加此组件，不覆盖监听列表。若固件拒绝命令，家长可在系统「通知使用权 / 通知访问」中允许「学后看 · 后台恢复」；若 `pm grant` 被拒绝，本功能不可用，回到普通无障碍授权，不使用提权绕过。
+首条输出仅在本地检查 `android.permission.WRITE_SECURE_SETTINGS: granted=true`，不要公开整份设备信息。`allow_listener` 只添加此组件，不覆盖监听列表。若固件拒绝命令，家长可在系统「通知使用权 / 通知访问」中允许「电视英语 · 后台恢复」；若 `pm grant` 被拒绝，本功能不可用，回到普通无障碍授权，不使用提权绕过。
 
-打开一次学后看触发恢复，再回到电视原桌面。回读授权，并确认服务实际连接：
+打开一次「电视英语」触发恢复，再回到电视原桌面。回读授权，并确认服务实际连接：
 
 ```text
 adb -s <DEVICE> shell dumpsys activity service scfido.learnthenwatch.tv/scfido.learnthenwatch.tv.MonitorRevivalService
@@ -150,7 +150,7 @@ Android 10 及以下的低内存设备可能不支持通知监听（[Android 官
 逐项记录实际结果：
 
 1. 包名、版本、版本代码、APK SHA-256 和证书指纹符合预期；正式版不包含测试运行器。
-2. 应用可从电视桌面打开，遥控器可浏览首页、地图和家长配置；家长 PIN 保护有效。
+2. 从电视应用列表实际选中「电视英语」并按遥控器确认键打开，再检查首页、地图和家长配置；家长 PIN 保护有效。改名或移除隔离调试版后，还要确认旧图标消失且新图标指向正式包；直接用 `am start` 启动不能替代桌面入口验收。若日志显示点击的入口仍指向已卸载的 `.debug` 包，或正式图标名称未刷新，应刷新桌面进程并从图标复验，保留桌面布局和应用数据，不清除桌面或正式 APP 的数据。
 3. 家长需要观看时间管理时，监控检查应明确显示服务已连接；未设置密码、未授权或关闭管控等情况应说明当前状态。
 4. 经家长同意后，可在电视现有的兼容使用场景中验证学习换时、实际观看扣时、暂停不扣时以及 Home 清理学习页。该检查会产生真实学习和观看记录，应提前说明。
 5. 需要余额耗尽、事务或大量 UI 回归时，按 [构建文档](BUILDING.md) 使用调试包隔离测试，不修改孩子余额或正式数据库来加速测试。

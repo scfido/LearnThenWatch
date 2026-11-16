@@ -64,6 +64,8 @@ public final class MainActivity extends Activity {
                     navigation.restore(entries);
                 }
             }
+            if (getIntent().getBooleanExtra("learningHome", false)) navigation.reset(new Screen("home"));
+            getIntent().removeExtra("learningHome");
             renderCurrent();
         } catch (RuntimeException e) { fatal(); }
     }
@@ -205,7 +207,10 @@ public final class MainActivity extends Activity {
         if (!modal) {
             LinearLayout nav = TvUiTheme.column(this); nav.setPadding(0, dp(6), dp(18), 0);
             nav.addView(new LearningMascotView(this), new LinearLayout.LayoutParams(-1, dp(88)));
-            nav.addView(TvUiTheme.title(this, "学后看", 23));
+            TextView brand = TvUiTheme.title(this, getString(R.string.app_name), 23);
+            brand.setGravity(Gravity.CENTER_HORIZONTAL);
+            brand.setContentDescription(getString(R.string.product_name));
+            nav.addView(brand, new LinearLayout.LayoutParams(-1, -2));
             menuItem(nav, "学习首页", "home"); menuItem(nav, "探险地图", "map");
             menuItem(nav, "学习记录", "records"); menuItem(nav, "家长配置", "parent");
             root.addView(nav, new LinearLayout.LayoutParams(dp(168), -1));
@@ -310,9 +315,18 @@ public final class MainActivity extends Activity {
     }
     private void startStudy(boolean demo) {
         study = new LessonScreen(this, repository, () -> {
-            if (!demo && repository.snapshot().balanceMs > 0) { goBack(); openPlayer(); } else goBack();
-        }, this::goBack, demo);
+            LearningState.Snapshot state = repository.snapshot();
+            if (!demo && state.balanceMs > 0 && state.dailyRemainingMs > 0) { goBack(); openPlayer(); } else goBack();
+        }, this::goBack, this::learningHome, demo, null, false);
         pageRoot = study.view(); setContentView(pageRoot);
+    }
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent); setIntent(intent);
+        if (intent.getBooleanExtra("learningHome", false)) learningHome();
+        intent.removeExtra("learningHome");
+    }
+    private void learningHome() {
+        navigation.reset(new Screen("home")); renderCurrent();
     }
     private void map() {
         String stage = repository.settings().stage; shell(stage + " 探险地图", "");
@@ -403,7 +417,7 @@ public final class MainActivity extends Activity {
         monitorAdvice = TvUiTheme.text(this, "", 19, TvUiTheme.MUTED); TvUiTheme.add(card, monitorAdvice, 12);
         TvUiTheme.add(content, card, 16);
         action("monitor:system", "开启 / 检查无障碍服务  ›", this::openSystemSettings);
-        TvUiTheme.add(content, TvUiTheme.text(this, "在电视无障碍设置开启「学后看 · 观看管控」。\n授权保留时，系统会在开机时重新连接，无需先打开学后看。", 19, TvUiTheme.MUTED), 16);
+        TvUiTheme.add(content, TvUiTheme.text(this, "在电视无障碍设置开启「电视英语 · 观看管控」。\n授权保留时，系统会在开机时重新连接，无需先打开电视英语。", 19, TvUiTheme.MUTED), 16);
         TvUiTheme.add(content, TvUiTheme.text(this, "只计云视听小电视的实际播放。零余额先学习；观看时间用完再次学习。暂停、待机和学习期间不扣时。", 19, TvUiTheme.MUTED), 12);
         TvUiTheme.add(content, TvUiTheme.text(this, "部分电视待机会强停应用并关闭无障碍授权。若唤醒后未生效，请重新开启服务；可在电视管家检查后台运行限制。", 17, TvUiTheme.MUTED), 10);
         refreshHomeCounters();
@@ -412,7 +426,7 @@ public final class MainActivity extends Activity {
         switch (kind) {
             case NEEDS_PIN: return "请先在家长配置设置四位 PIN，再开启无障碍服务。";
             case DISABLED: return "请在家长配置开启「观看管控」。";
-            case NEEDS_PERMISSION: return "请进入电视系统设置，在无障碍中开启「学后看 · 观看管控」。";
+            case NEEDS_PERMISSION: return "请进入电视系统设置，在无障碍中开启「电视英语 · 观看管控」。";
             case CONNECTING: return "无障碍已开启，正在等待系统连接。若持续未连接，请在系统设置关闭再开启该服务，并允许应用后台运行。";
             case ERROR: return "请检查系统无障碍服务，或重新打开应用重试。学习记录会保留。";
             default: return "服务已连接。重启后由系统恢复；如电视管家限制后台运行，请允许本应用后台运行。";

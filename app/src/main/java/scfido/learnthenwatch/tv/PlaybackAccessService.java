@@ -50,6 +50,10 @@ public final class PlaybackAccessService extends AccessibilityService {
     private long lastDiagnostic;
     private String gateError;
     private long samples;
+    private PlaybackTransitionOverlay transitionOverlay;
+    private boolean enteringStudy;
+    private PlaybackVolumeFade volumeFade;
+    private long sampleDelayMs = 1000;
 
     public static boolean isConnected() { return instance != null; }
     public static PlaybackAccessStatus monitorStatus(Context context, LearningRepository repository) {
@@ -81,6 +85,7 @@ public final class PlaybackAccessService extends AccessibilityService {
             if (shuttingDown) return;
             try { sample(); }
             catch (RuntimeException error) {
+                if (volumeFade != null) volumeFade.pause();
                 clock.reset();
                 status(PlaybackAccessStatus.Kind.ERROR, "未生效 · 数据读取失败，请进入家长配置检查");
                 Log.e("LearnThenWatch", "Control state failed", error);
@@ -91,7 +96,7 @@ public final class PlaybackAccessService extends AccessibilityService {
                 }
             } finally {
                 handler.removeCallbacks(this);
-                if (!shuttingDown) handler.postDelayed(this, 1000);
+                if (!shuttingDown) handler.postDelayed(this, sampleDelayMs);
             }
         }
     };
@@ -102,6 +107,8 @@ public final class PlaybackAccessService extends AccessibilityService {
         instance = this;
         repository = null;
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        transitionOverlay = new PlaybackTransitionOverlay(this);
+        volumeFade = new PlaybackVolumeFade(this);
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                 .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -139,7 +146,7 @@ public final class PlaybackAccessService extends AccessibilityService {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         // Accessibility overlays can own input focus while the actual application changes below them.
         // Inspect application windows before relying on the overlay's remembered underlying owner.
-        if (root == null || (gate != null && getPackageName().contentEquals(root.getPackageName() == null ? "" : root.getPackageName()))) {
+        if (root == null || getPackageName().contentEquals(root.getPackageName() == null ? "" : root.getPackageName())) {
             java.util.List<AccessibilityWindowInfo> visible = getWindows();
             try {
                 for (AccessibilityWindowInfo window : visible) {
@@ -179,6 +186,7 @@ public final class PlaybackAccessService extends AccessibilityService {
     }
 
     private void sample() {
+        sampleDelayMs = 1000;
         samples++;
         if (repository == null) repository = LearningRepository.get(this);
         ParentSettings settings = repository.settings();
@@ -201,18 +209,21 @@ public final class PlaybackAccessService extends AccessibilityService {
             return;
         }
         if (target == PlayerWindowTracker.State.UNKNOWN) {
+            if (volumeFade != null) volumeFade.pause();
+            transitionOverlay.hideWarning();
             clock.reset();
             if (gate != null) gateStatus();
             else status(PlaybackAccessStatus.Kind.WAITING, "正在生效 · 等待播放窗口确认，不计时");
             return;
         }
         LearningState.Snapshot state = repository.snapshot();
-        if (gate != null) {
+        if (gate != null || enteringStudy) {
             clock.reset();
             gateStatus();
             return;
         }
         if (state.balanceMs <= 0 || state.dailyRemainingMs <= 0) {
+            if (volumeFade != null) volumeFade.update(0, true);
             clock.reset(); showGate(); return;
         }
         long before = clock.elapsed();
@@ -220,10 +231,18 @@ public final class PlaybackAccessService extends AccessibilityService {
         clock.tick(SystemClock.elapsedRealtime(), playing);
         long consumed = clock.elapsed() - before;
         if (consumed > 0) state = repository.consumeViewing(consumed);
+        long remaining = PlaybackTransitionOverlay.remaining(state.balanceMs, state.dailyRemainingMs);
+        if (volumeFade != null) volumeFade.update(remaining, playing);
+        if (remaining > 0 && remaining <= PlaybackTransitionOverlay.WARNING_MS)
+            sampleDelayMs = playing && remaining <= ViewingVolumeFade.FADE_MS ? 100 : 500;
         status(playing ? PlaybackAccessStatus.Kind.WATCHING : PlaybackAccessStatus.Kind.WAITING,
                 playing ? "正在计时 · 本轮剩余 " + ((state.balanceMs + 59999) / 60000) + " 分钟" : "正在生效 · 播放已暂停，不计时");
         if (state.balanceMs <= 0 || state.dailyRemainingMs <= 0) {
             clock.reset(); showGate();
+        } else {
+            // Warning failures must never prevent charging or the time-expired gate.
+            try { transitionOverlay.update(remaining, playing); }
+            catch (RuntimeException error) { Log.w("LearnThenWatch", "Could not show viewing warning", error); }
         }
         long now = SystemClock.elapsedRealtime();
         if (now - lastDiagnostic >= 15000) {
@@ -250,7 +269,7 @@ public final class PlaybackAccessService extends AccessibilityService {
     }
 
     private void showGate() {
-        if (gate != null || shuttingDown) return;
+        if (gate != null || enteringStudy || shuttingDown) return;
         try {
             if (repository.snapshot().dailyRemainingMs <= 0) { showDailyLimit(); return; }
             showStudyTransition();
@@ -261,23 +280,8 @@ public final class PlaybackAccessService extends AccessibilityService {
     }
 
     private void showStudyTransition() {
-        final long token = ++generation;
-        LinearLayout intro = simplePage("观看时间到啦", "休息一下，准备开始英语探险\n2 秒后开始答题");
-        intro.setTag("study:transition");
-        attach(intro);
-        intro.setAlpha(0f);
-        intro.animate().alpha(1f).setDuration(350).start();
-        handler.postDelayed(() -> {
-            if (token != generation || gate == null || shuttingDown) return;
-            try {
-                // Keep the same window/audio focus throughout; no player flash or audio resumption.
-                buildStudyGate();
-                TvUiTheme.enter(screen.view());
-            } catch (RuntimeException error) {
-                Log.e("LearnThenWatch", "Could not start lesson after transition", error);
-                showError("学习内容暂时无法打开，请重试或请家长检查。");
-            }
-        }, 2000);
+        enteringStudy = true;
+        buildStudyGate();
     }
 
     private void buildStudyGate() {
@@ -289,7 +293,7 @@ public final class PlaybackAccessService extends AccessibilityService {
                 if (state.balanceMs > 0 && state.dailyRemainingMs > 0) dismissGate();
                 else leaveToHome();
             } catch (RuntimeException e) { showError("观看额度读取失败，请重试。"); }
-        }, this::leaveToHome, false);
+        }, this::leaveToHome, this::leaveToLearningHome, false, null, enteringStudy);
         attach(screen.view());
     }
 
@@ -341,7 +345,7 @@ public final class PlaybackAccessService extends AccessibilityService {
             dismissGate(); repository = null;
             // The existing periodic poll will retry; do not create a second polling loop.
         });
-        addButton(page, "打开学后看", () -> {
+        addButton(page, getString(R.string.open_app), () -> {
             dismissGate();
             startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         });
@@ -360,6 +364,7 @@ public final class PlaybackAccessService extends AccessibilityService {
     }
 
     private void attach(View content) {
+        if (transitionOverlay != null) transitionOverlay.hideWarning();
         FrameLayout wrapper = new FrameLayout(this) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 if (SystemVolumeKeys.dispatch(PlaybackAccessService.this, event)) return true;
@@ -382,14 +387,21 @@ public final class PlaybackAccessService extends AccessibilityService {
             return;
         }
         wrapper.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        wrapper.setBackgroundColor(TvUiTheme.CREAM);
+        if (enteringStudy) wrapper.setAlpha(0);
         wrapper.addView(content, new FrameLayout.LayoutParams(-1, -1));
         gate = wrapper;
         try {
-            clock.reset(); acquireFocus();
+            clock.reset(); if (!focusRequested) acquireFocus();
             long window = ++gateWindow;
             startActivity(new Intent(this, LearningGateActivity.class)
                     .putExtra("gateWindow", window)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+            handler.postDelayed(() -> {
+                if (window != gateWindow || gate == null || gateActivity != null || shuttingDown) return;
+                dismissGate();
+                status(PlaybackAccessStatus.Kind.ERROR, "未生效 · 无法显示学习页面，请家长检查");
+            }, 5000);
             Log.i("LearnThenWatch", "Learning gate application window requested");
         } catch (RuntimeException error) {
             dismissGate();
@@ -402,6 +414,22 @@ public final class PlaybackAccessService extends AccessibilityService {
         if (shuttingDown || gate == null || window != gateWindow) return false;
         gateActivity = activity; activity.showGate(gate);
         if (screen != null) screen.resume();
+        if (screen != null && (enteringStudy || screen.isPreparing())) {
+            enteringStudy = true;
+            final long token = generation;
+            final LessonScreen lesson = screen;
+            // Fade the translucent ordinary window over the live player. Keeping the
+            // transition below system UI also preserves native volume throughout it.
+            gate.postOnAnimation(() -> {
+                if (token != generation || screen != lesson || gateActivity != activity) return;
+                gate.animate().alpha(1).setDuration(600).withEndAction(() -> {
+                    if (token != generation || screen != lesson) return;
+                    enteringStudy = false;
+                    if (volumeFade != null) volumeFade.restore();
+                    lesson.beginPreparation();
+                }).start();
+            });
+        } else if (volumeFade != null) volumeFade.restore();
         return true;
     }
 
@@ -420,15 +448,28 @@ public final class PlaybackAccessService extends AccessibilityService {
         performGlobalAction(GLOBAL_ACTION_HOME);
     }
 
+    private void leaveToLearningHome() {
+        // Cover the player with the destination before releasing its transient audio focus.
+        startActivity(new Intent(this, MainActivity.class).putExtra("learningHome", true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+        dismissGate(); clock.reset(); playback.reset();
+    }
+
     private void dismissGate() {
+        if (volumeFade != null) volumeFade.restore();
         handler.removeCallbacks(retryFocus);
+        enteringStudy = false;
+        if (transitionOverlay != null) transitionOverlay.close();
+        if (gate != null) gate.animate().cancel();
         generation++; gateError = null;
-        if (screen != null) { screen.close(); screen = null; }
+        if (screen != null) { screen.view().animate().cancel(); screen.close(); screen = null; }
         LearningGateActivity activity = gateActivity;
         gateActivity = null;
         if (activity != null) {
             activity.releaseGate(gate);
-            activity.finishAndRemoveTask();
+            // Removing the entire task can make the TV firmware kill the service process,
+            // including a newly requested gate during a rapid settings/rebind sequence.
+            activity.finish();
         }
         gate = null;
         if (focusRequested && audio != null && focus != null) try { audio.abandonAudioFocusRequest(focus); }
@@ -441,6 +482,7 @@ public final class PlaybackAccessService extends AccessibilityService {
     private void shutdown() {
         shuttingDown = true; handler.removeCallbacksAndMessages(null);
         dismissGate(); clock.reset(); playback.reset();
+        if (volumeFade != null) { volumeFade.close(); volumeFade = null; }
         if (instance == this) instance = null;
         status(PlaybackAccessStatus.Kind.CONNECTING, "等待系统连接 · 无障碍服务未连接");
     }

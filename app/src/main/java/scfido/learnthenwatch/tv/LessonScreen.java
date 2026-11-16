@@ -27,7 +27,8 @@ import java.util.regex.Pattern;
 public final class LessonScreen {
     private final Context context;
     private final LearningRepository repository;
-    private final Runnable onFinished, onExit;
+    private final Runnable onFinished, onExit, onHome;
+    private boolean preparing;
     private final boolean demo;
     private final VocabularyCatalog.Item review;
     private final FrameLayout root;
@@ -41,6 +42,7 @@ public final class LessonScreen {
     private Button secondary, replayButton;
     private boolean autoAdvance;
     private final Runnable autoNext = this::transitionNext;
+    private final Runnable prepareReady = this::readyPreparation;
     private Runnable replayAction, nextAction;
     private boolean transitioning;
     private LearningMascotView companion;
@@ -52,12 +54,18 @@ public final class LessonScreen {
         this(context, repository, onFinished, onExit, demo, null);
     }
     LessonScreen(Context context, LearningRepository repository, Runnable onFinished, Runnable onExit, boolean demo, VocabularyCatalog.Item review) {
-        this.context = context; this.repository = repository; this.onFinished = onFinished; this.onExit = onExit; this.demo = demo;
+        this(context, repository, onFinished, onExit, onExit, demo, review, false);
+    }
+    LessonScreen(Context context, LearningRepository repository, Runnable onFinished, Runnable onExit,
+            Runnable onHome, boolean demo, VocabularyCatalog.Item review, boolean preparing) {
+        this.context = context; this.repository = repository; this.onFinished = onFinished; this.onExit = onExit; this.onHome = onHome; this.demo = demo;
+        this.preparing = preparing;
         this.review = review;
         root = new FrameLayout(context) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 if (SystemVolumeKeys.dispatch(context, event)) return true;
                 int key = event.getKeyCode();
+                if (LessonScreen.this.preparing && key != KeyEvent.KEYCODE_BACK) return true;
                 if (key == KeyEvent.KEYCODE_DPAD_RIGHT && review == null && active != null) {
                     if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0 && !transitioning) {
                         if (nextAction != null) nextAction.run();
@@ -102,6 +110,29 @@ public final class LessonScreen {
     public void pauseAudio() { paused = true; generation++; handler.removeCallbacksAndMessages(null); audio.stop(); }
     public void resume() { paused = false; render(); }
     public void close() { closed = true; pauseAudio(); }
+
+    /** Called only after the gate window is visible and its entrance animation has ended. */
+    void beginPreparation() {
+        if (!preparing || closed || paused) return;
+        handler.removeCallbacks(prepareReady);
+        handler.postDelayed(prepareReady, 2000);
+    }
+    boolean isPreparing() { return preparing; }
+    private void readyPreparation() {
+        if (closed || paused || !preparing) return;
+        try { finishPreparation(); } catch (RuntimeException error) { failure(error); }
+    }
+    private void finishPreparation() {
+        preparing = false;
+        for (int n = 0; n < footer.getChildCount(); n++)
+            if (footer.getChildAt(n) instanceof Button) footer.getChildAt(n).setEnabled(true);
+        if (active == null || answers.isEmpty()) { root.requestFocus(View.FOCUS_DOWN); return; }
+        boolean listening = "LISTEN".equals(active.type);
+        for (Button answer : answers) answer.setEnabled(!listening);
+        if (secondary != null) secondary.setEnabled(!listening);
+        if (!listening) answers.get(0).requestFocus(); else root.requestFocus();
+        if (!"SENTENCE".equals(active.type) && (repository.settings().autoSpeak || listening)) play(item(active), listening);
+    }
 
     private int dp(float value) { return TvUiTheme.dp(context, value); }
     private TextView fit(CharSequence value, int max, int min) {
@@ -173,7 +204,9 @@ public final class LessonScreen {
         String label = demo ? "体验" : (task.correction ? "错题再练" : session.stage);
         reset(label, demo ? demoIndex : session.completedTasks, demo ? 3 : session.taskCount);
         active = task; VocabularyCatalog.Item value = item(task);
-        if (task.correction && task.correctionAttempts >= 2) { showGuided(task); return; }
+        if (task.correction && task.correctionAttempts >= 2) {
+            showGuided(task); if (preparing) lockPreparation(); return;
+        }
         boolean listening = "LISTEN".equals(task.type);
         if (listening) {
             fixedText(left, "听一听", 32, 26, 60);
@@ -211,7 +244,14 @@ public final class LessonScreen {
         verticalChoices();
         status.setText("← 重听 · → 不认识");
         if (!listening) answers.get(0).requestFocus(); else root.requestFocus();
-        if (!"SENTENCE".equals(task.type) && (repository.settings().autoSpeak || listening)) play(value, listening);
+        if (preparing) lockPreparation();
+        else if (!"SENTENCE".equals(task.type) && (repository.settings().autoSpeak || listening)) play(value, listening);
+    }
+    private void lockPreparation() {
+        for (Button answer : answers) answer.setEnabled(false);
+        for (int n = 0; n < footer.getChildCount(); n++)
+            if (footer.getChildAt(n) instanceof Button) footer.getChildAt(n).setEnabled(false);
+        root.requestFocus();
     }
     private CharSequence highlight(String sentence, String word) {
         SpannableString text = new SpannableString(sentence);
@@ -223,7 +263,7 @@ public final class LessonScreen {
         return text;
     }
     private Button footerButton(String title, boolean primary, Runnable action, int width) {
-        Button button = TvUiTheme.button(context, title, primary, action); button.setTextSize(18);
+        Button button = TvUiTheme.button(context, title, primary, () -> { if (!preparing) action.run(); }); button.setTextSize(18);
         button.setId(View.generateViewId());
         button.setNextFocusUpId(button.getId()); button.setNextFocusDownId(button.getId());
         button.setNextFocusLeftId(button.getId()); button.setNextFocusRightId(button.getId());
@@ -267,7 +307,7 @@ public final class LessonScreen {
         });
     }
     private void answer(LearningState.Task task, int choice, boolean unknown) {
-        if (closed || paused || submitting) return;
+        if (closed || paused || preparing || submitting) return;
         if (audioFailed && unknown) {
             try {
                 if (demo) {
@@ -375,6 +415,7 @@ public final class LessonScreen {
         if (repository.settings().autoSpeak) play(review, false);
     }
     private void result(String title, LearningState.Snapshot state) {
+        preparing = false;
         int total = demo ? 3 : session.taskCount;
         reset(demo ? "体验完成" : "本轮完成", total, total); companion.happy();
         LearningMascotView partner = new LearningMascotView(context); partner.happy(); left.addView(partner, new LinearLayout.LayoutParams(-1, -1));
@@ -386,13 +427,21 @@ public final class LessonScreen {
         fixedText(choices, reason, 18, 15, 44);
         clearFooter("");
         if (demo) { status.setText("体验完成 · 按返回键退出"); root.requestFocus(); LearningMascotView.celebrate(root); return; }
-        Button done = footerButton(state.balanceMs > 0 ? "继续观看  →" : "再学一轮", true, () -> {
+        Button home = footerButton("回到学习首页", false, () -> {
+            if (submitting) return; submitting = true; pauseAudio(); onHome.run();
+        }, 210); home.setTag("study:home");
+        boolean canWatch = state.balanceMs > 0 && state.dailyRemainingMs > 0 && repository.hasPin();
+        Button done = footerButton("继续观看  →", true, () -> {
             if (submitting) return; submitting = true;
             try {
-                if (!demo && repository.snapshot().balanceMs > 0) { pauseAudio(); onFinished.run(); }
-                else { session = null; render(); }
+                LearningState.Snapshot current = repository.snapshot();
+                if (current.balanceMs > 0 && current.dailyRemainingMs > 0 && repository.hasPin()) { pauseAudio(); onFinished.run(); }
+                else { submitting = false; result(title, current); }
             } catch (RuntimeException error) { failure(error); }
-        }, 248); done.setTag("study:finish"); done.requestFocus(); LearningMascotView.celebrate(root);
+        }, 210); done.setTag("study:finish"); done.setEnabled(canWatch);
+        home.setNextFocusRightId(done.getId()); done.setNextFocusLeftId(home.getId());
+        home.setNextFocusDownId(done.getId()); done.setNextFocusUpId(home.getId());
+        (canWatch ? done : home).requestFocus(); LearningMascotView.celebrate(root);
     }
     private void renderDemo() {
         if (demoIndex >= 3) { result("体验完成！", null); return; }
@@ -406,6 +455,7 @@ public final class LessonScreen {
     }
     private void failure(RuntimeException error) {
         if (closed) return;
+        preparing = false;
         reset("需要一点帮助", 0, 1);
         fixedText(left, "暂时无法继续", 30, 24, 76);
         String message = error.getMessage() == null ? "请家长检查课程或存储" : error.getMessage();

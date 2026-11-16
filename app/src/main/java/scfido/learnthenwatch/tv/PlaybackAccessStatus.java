@@ -12,7 +12,7 @@ public final class PlaybackAccessStatus {
             boolean connected, PlaybackAccessStatus live) {
         if (!hasPin) return new PlaybackAccessStatus(Kind.NEEDS_PIN, "未生效 · 请家长先设置 PIN");
         if (!enabled) return new PlaybackAccessStatus(Kind.DISABLED, "未生效 · 家长已关闭管控");
-        if (!authorized) return new PlaybackAccessStatus(Kind.NEEDS_PERMISSION, "未生效 · 请开启「学后看 · 观看管控」");
+        if (!authorized) return new PlaybackAccessStatus(Kind.NEEDS_PERMISSION, "未生效 · 请开启「电视英语 · 观看管控」");
         if (!connected) return new PlaybackAccessStatus(Kind.CONNECTING, "等待系统连接 · 无障碍已开启");
         return live;
     }

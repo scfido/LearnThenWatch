@@ -60,6 +60,12 @@ python tools/check_monitor_recovery.py --device <DEVICE> --reboot --standby
 
 截图工具生成五张画面至 `docs/screenshots`，使用演示记录，结束后删除演示数据。监控检查会实际播放、暂停和切换 Home，应在[已验证的兼容环境](VALIDATION.md)运行；页面变化可能影响自动选片。当前小米固件待机会强停进程，使用 `--skip-standby`；普通待机恢复只在确认支持的固件上验收。
 
+## 观看到期过渡回归
+
+修改观看过渡后，除基线构建和课程校验外，在明确指定的电视上串行运行 `run_device_checks.py --suite ui` 和 `check_playback_access.py --skip-standby`（均需指定 `--device <DEVICE>`）。UI 检查覆盖显示真实题目后的两秒内禁止作答与自动发音、关闭页面后取消准备回调，以及完成页双按钮、焦点连接和额度再次校验；播放检查覆盖到期后没有独立等待页、准备期间不提交答案和不扣观看时间。
+
+另需实看实际 bilibili 播放：剩余 30 秒时顶部只有约 4dp 的窄条，暂停后不再缩短，恢复后继续；离开播放器、待机或关闭管控时移除。检查约 600ms 的视频渐隐与题目渐显是否连续、有无黑屏或视频闪回；题目完全显示两秒后才启用答案和自动发音。准备中检查返回与原生音量条，完成后分别验证回学习首页、返回原播放器，以及当天额度用完时不能继续观看。使用隔离记录，保留正式学习数据和无关无障碍服务；截图不能代替动画及真实遥控器验收。
+
 ## 正式签名
 
 首次生成并构建：
@@ -113,3 +119,14 @@ python tools/prepare_release.py --tag v1.5.3
 ```
 
 SHA-256 用于检测文件损坏，安装还要检查证书，见 [Agent 手册](DEPLOYMENT-AGENT.md)。GitHub 的 [Secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) 和 [令牌权限](https://docs.github.com/en/actions/tutorials/authenticate-with-github_token) 以官方文档为准。
+
+## 到期音量恢复回归
+
+先执行基线构建、课程校验及 `python -m unittest discover -s tools -p test_device_tools.py`，再在明确指定且已唤醒的电视上串行运行播放检查。播放检查包含真实媒体流的渐弱、暂停恢复、关闭恢复、持久化恢复、六秒独立恢复、原本静音和手动调音优先，并在自动调整和真实视频最后三秒检查没有可见的系统音量窗口。
+
+```powershell
+python tools/check_playback_access.py --device <DEVICE> --skip-standby --screenshots-dir build/device-checks/fade
+python tools/check_volume_fade_recovery.py --device <DEVICE>
+```
+
+第二条要求已安装当前调试 APK；它只结束调试包进程，验证独立定时任务重新启动应用并恢复真实媒体音量，结束后还原音量和原系统设置。`VolumeFadeProbeActivity` 只存在于调试构建，没有桌面入口，正式 APK 不包含该测试入口。不要用强行停止代替结束进程来测试自动恢复：Android 强行停止可能取消定时任务，此时要靠下一次应用启动恢复。使用可调音量、当前未静音且媒体音量至少为 2 的测试环境，保留原媒体音量，设备工具串行执行；不能只凭音频焦点获批推断已静音。

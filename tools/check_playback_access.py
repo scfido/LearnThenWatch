@@ -49,6 +49,21 @@ def key(value):
     adb("shell", "input", "keyevent", value)
 
 
+def pause_player():
+    # Center may only reveal player controls on some videos. Check playback before
+    # using a media-pause fallback so a second toggle cannot accidentally resume it.
+    for action in ("KEYCODE_DPAD_CENTER", "KEYCODE_MEDIA_PAUSE", "KEYCODE_DPAD_CENTER"):
+        key(action)
+        for _ in range(4):
+            time.sleep(.4)
+            audio = adb("shell", "dumpsys", "audio")
+            playing = any("AudioPlaybackConfiguration" in line and "com.xiaodianshi.tv.yst" in line
+                          and "state:started" in line for line in audio.splitlines())
+            if not playing:
+                return
+    raise RuntimeError("The target player did not pause after verified remote/media-pause actions")
+
+
 def capture_focus(name):
     if not args.screenshots_dir:
         return
@@ -115,7 +130,9 @@ def player(resume=False):
 
 
 process = None
+recording = None
 passed = False
+volume_ui_errors = []
 recovery = suspended_recovery(args.device)
 recovery.__enter__()
 try:
@@ -128,14 +145,48 @@ try:
                                encoding="utf-8", errors="replace", bufsize=1)
     for line in process.stdout:
         print(line, end="", flush=True)
+        if "VOLUME_SILENT:" in line:
+            window_dump = adb("shell", "dumpsys", "window")
+            if any("ty=VOLUME_OVERLAY" in w and "Surface: shown=true" in w
+                   for w in re.split(r"(?m)^  Window #", window_dump)[1:]):
+                # Continue so instrumentation can restore the pre-test volume in finally.
+                volume_ui_errors.append("Automatic volume adjustment displayed system volume UI")
         phase = re.search(r"MONITOR_([A-Z_]+):", line)
         if phase:
             event = phase.group(1)
             if event == "READY":
                 set_services(":".join(services + [monitor]))
                 player()
-            elif event == "PAUSE":
-                key("KEYCODE_DPAD_CENTER"); command("paused")
+            elif event in ("PAUSE", "WARNING_PAUSE"):
+                pause_player(); command("paused")
+            elif event == "RESULT_CONTINUE":
+                time.sleep(.4)
+                capture_focus("complete-continue.png")
+                key("KEYCODE_DPAD_CENTER"); command("continue")
+            elif event == "RESULT_HOME":
+                time.sleep(.4)
+                key("KEYCODE_DPAD_LEFT")
+                capture_focus("complete-home.png")
+                key("KEYCODE_DPAD_CENTER"); command("result_home")
+            elif event == "COUNTDOWN":
+                capture_focus("countdown-strip.png")
+                if args.screenshots_dir:
+                    recording = subprocess.Popen(prefix + ["shell", "screenrecord", "--time-limit", "22", "--bit-rate", "3000000",
+                        "/sdcard/Android/data/" + args.package + "/cache/monitor-transition.mp4"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                command("countdown")
+            elif event == "FADE":
+                deadline = time.monotonic() + 3.4
+                snapshots = []
+                while time.monotonic() < deadline:
+                    window_dump = adb("shell", "dumpsys", "window")
+                    if any("ty=VOLUME_OVERLAY" in w and "Surface: shown=true" in w
+                           for w in re.split(r"(?m)^  Window #", window_dump)[1:]):
+                        volume_ui_errors.append("Real player fade displayed system volume UI")
+                    snapshots.append("no visible system volume window")
+                    time.sleep(.15)
+                if args.screenshots_dir:
+                    (args.screenshots_dir / "silent-fade-windows.txt").write_text("\n".join(snapshots), encoding="utf-8")
             elif event in ("INITIAL_DOWN", "EXPIRED_DOWN"):
                 key("KEYCODE_DPAD_DOWN")
                 if event == "EXPIRED_DOWN":
@@ -176,7 +227,7 @@ try:
                 power(False); command("asleep")
             elif event == "WAKE":
                 power(True); player(resume=True); command("awake")
-            elif event == "RESUME":
+            elif event in ("RESUME", "WARNING_RESUME"):
                 player(resume=True); command("resumed")
             elif event == "BACK":
                 key("KEYCODE_BACK"); command("back")
@@ -192,17 +243,26 @@ try:
         if "PASS:" in line:
             passed = True
     process.wait(timeout=10)
+    if volume_ui_errors:
+        raise RuntimeError("; ".join(sorted(set(volume_ui_errors))))
     if not passed:
         raise RuntimeError("Monitor checks failed; ensure a real video is resumable in the target app.")
 finally:
     try:
-        power(True)
-        set_services(":".join(services))
-        # Leave the player before restoring production monitoring.
-        key("KEYCODE_HOME")
-        if process is not None and process.poll() is None:
-            adb("shell", "am", "force-stop", args.package)
-            process.terminate()
+        try:
+            if recording is not None:
+                recording.wait(timeout=30)
+                remote = "/sdcard/Android/data/" + args.package + "/cache/monitor-transition.mp4"
+                adb("pull", remote, str(args.screenshots_dir / "transition.mp4"))
+                adb("shell", "rm", remote)
+        finally:
+            power(True)
+            set_services(":".join(services))
+            # Leave the player before restoring production monitoring.
+            key("KEYCODE_HOME")
+            if process is not None and process.poll() is None:
+                adb("shell", "am", "force-stop", args.package)
+                process.terminate()
     finally:
         try:
             restore_accessibility(args.device, original, original_enabled)
