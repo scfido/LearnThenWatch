@@ -1,12 +1,13 @@
 package scfido.learnthenwatch.tv;
 
+import static scfido.learnthenwatch.tv.TvUiTheme.Role.*;
+
 import android.accessibilityservice.AccessibilityService;
 import android.content.Intent;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.res.Configuration;
 import android.accessibilityservice.AccessibilityServiceInfo;
-import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
@@ -37,6 +38,7 @@ public final class PlaybackAccessService extends AccessibilityService {
     private final PlaybackTimer clock = new PlaybackTimer(0);
     private final PlayerWindowTracker playback = new PlayerWindowTracker(TARGET, BuildConfig.APPLICATION_ID);
     private LearningRepository repository;
+    private TvUiTheme theme;
     private AudioManager audio;
     private AudioFocusRequest focus;
     private LearningGateActivity gateActivity;
@@ -107,7 +109,8 @@ public final class PlaybackAccessService extends AccessibilityService {
         instance = this;
         repository = null;
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
-        transitionOverlay = new PlaybackTransitionOverlay(this);
+        theme = new TvUiTheme(this, ThemeMode.AUTO);
+        transitionOverlay = new PlaybackTransitionOverlay(this, theme);
         volumeFade = new PlaybackVolumeFade(this);
         focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                 .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
@@ -188,7 +191,7 @@ public final class PlaybackAccessService extends AccessibilityService {
     private void sample() {
         sampleDelayMs = 1000;
         samples++;
-        if (repository == null) repository = LearningRepository.get(this);
+        if (repository == null) { repository = LearningRepository.get(this); appearanceChanged(); }
         ParentSettings settings = repository.settings();
         if (!repository.hasPin()) {
             status(PlaybackAccessStatus.Kind.NEEDS_PIN, "未生效 · 请家长先设置 PIN");
@@ -254,8 +257,23 @@ public final class PlaybackAccessService extends AccessibilityService {
 
     void settingsChanged() {
         clock.reset(); dismissGate();
+        appearanceChanged();
         // Never overwrite repository state with a cached service snapshot.
         requestSample();
+    }
+
+    @Override public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        appearanceChanged();
+    }
+
+    void appearanceChanged() {
+        if (theme == null) return;
+        ThemeMode mode = repository == null ? ThemeMode.AUTO : repository.settings().themeMode;
+        theme.refresh(mode, gate);
+        if (screen != null) screen.refreshTheme();
+        if (transitionOverlay != null) transitionOverlay.refreshTheme(mode);
+        if (gateActivity != null) theme.applyWindow(gateActivity, true);
     }
 
     private void gateStatus() {
@@ -298,37 +316,23 @@ public final class PlaybackAccessService extends AccessibilityService {
     }
 
     private LinearLayout simplePage(String title, String message) {
+        appearanceChanged();
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL); page.setGravity(Gravity.CENTER);
         page.setPadding(dp(48), dp(24), dp(48), dp(24));
-        page.setBackgroundColor(Color.rgb(255, 248, 233));
-        TextView heading = new TextView(this);
-        heading.setText(title); heading.setTextSize(34); heading.setTextColor(Color.rgb(22, 125, 141));
+        theme.backgroundColor(page, BACKGROUND);
+        TextView heading = theme.text(title, 34, ACCENT);
         heading.setGravity(Gravity.CENTER); page.addView(heading);
-        TextView body = new TextView(this);
-        body.setText(message); body.setTextSize(22); body.setGravity(Gravity.CENTER);
-        body.setTextColor(Color.rgb(53, 72, 78)); body.setPadding(0, dp(20), 0, dp(20));
+        TextView body = theme.text(message, 22, TEXT); body.setGravity(Gravity.CENTER);
+        body.setPadding(0, dp(20), 0, dp(20));
         page.addView(body); return page;
     }
 
     private void addButton(LinearLayout page, String label, Runnable action) {
-        Button button = new Button(this);
-        button.setText(label); button.setAllCaps(false); button.setTextSize(23);
-        button.setTextColor(Color.rgb(22, 78, 89)); button.setPadding(dp(20), dp(8), dp(20), dp(8));
-        button.setBackground(buttonBackground(false));
-        button.setOnFocusChangeListener((v, focused) -> {
-            v.setBackground(buttonBackground(focused));
-            v.animate().translationY(focused ? -dp(1) : 0).setDuration(130).start();
-        });
-        button.setOnClickListener(v -> action.run());
+        Button button = theme.button(label, false, action); button.setTextSize(23);
+        button.setPadding(dp(20), dp(8), dp(20), dp(8));
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(dp(460), dp(62));
         size.topMargin = dp(12); page.addView(button, size);
-    }
-
-    private GradientDrawable buttonBackground(boolean focused) {
-        GradientDrawable shape = new GradientDrawable();
-        shape.setCornerRadius(dp(14)); shape.setColor(focused ? Color.rgb(222, 240, 232) : Color.WHITE);
-        shape.setStroke(dp(focused ? 3 : 1), Color.rgb(22, 125, 141)); return shape;
     }
 
     private void showDailyLimit() {
@@ -387,7 +391,7 @@ public final class PlaybackAccessService extends AccessibilityService {
             return;
         }
         wrapper.setDescendantFocusability(android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS);
-        wrapper.setBackgroundColor(TvUiTheme.CREAM);
+        theme.backgroundColor(wrapper, BACKGROUND);
         if (enteringStudy) wrapper.setAlpha(0);
         wrapper.addView(content, new FrameLayout.LayoutParams(-1, -1));
         gate = wrapper;
@@ -413,6 +417,7 @@ public final class PlaybackAccessService extends AccessibilityService {
     boolean attachGateActivity(LearningGateActivity activity, long window) {
         if (shuttingDown || gate == null || window != gateWindow) return false;
         gateActivity = activity; activity.showGate(gate);
+        appearanceChanged();
         if (screen != null) screen.resume();
         if (screen != null && (enteringStudy || screen.isPreparing())) {
             enteringStudy = true;

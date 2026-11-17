@@ -6,7 +6,7 @@ from device_tools import RUNNER, adb, isolated_services, require_pass
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", required=True)
-    parser.add_argument("--suite", choices=("all", "sqlite", "ui", "remote"), default="all")
+    parser.add_argument("--suite", choices=("all", "sqlite", "ui", "remote", "theme"), default="all")
     args = parser.parse_args()
     suites = ("sqlite", "ui", "remote") if args.suite == "all" else (args.suite,)
     with isolated_services(args.device):

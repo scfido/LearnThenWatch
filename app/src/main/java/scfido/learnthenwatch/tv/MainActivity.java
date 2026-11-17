@@ -1,7 +1,10 @@
 package scfido.learnthenwatch.tv;
 
+import static scfido.learnthenwatch.tv.TvUiTheme.Role.*;
+
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.Settings;
@@ -24,6 +27,7 @@ import scfido.learnthenwatch.tv.ScreenHistory.Screen;
 public final class MainActivity extends Activity {
     public static boolean foreground;
     private LearningRepository repository;
+    private TvUiTheme theme;
     private LessonScreen study;
     private final ScreenHistory navigation = new ScreenHistory(new Screen("home"));
     private Screen pendingGate;
@@ -46,6 +50,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        theme = new TvUiTheme(this, ThemeMode.AUTO);
         setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
         try {
             repository = LearningRepository.get(this);
@@ -72,6 +77,7 @@ public final class MainActivity extends Activity {
     @Override public void onResume() {
         super.onResume(); foreground = true; handler.removeCallbacks(tick); handler.post(tick);
         if (repository == null) return;
+        refreshTheme();
         MonitorRecovery.request(this);
         if (study != null) study.resume(); else renderCurrent();
     }
@@ -92,6 +98,17 @@ public final class MainActivity extends Activity {
     }
     @Override public void onDestroy() { stopMedia(); handler.removeCallbacksAndMessages(null); super.onDestroy(); }
     @Override public void onBackPressed() { goBack(); }
+
+    @Override public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        refreshTheme();
+    }
+    private void refreshTheme() {
+        ThemeMode mode = repository == null ? ThemeMode.AUTO : repository.settings().themeMode;
+        theme.refresh(mode, pageRoot);
+        theme.applyWindow(this, false);
+        if (study != null) study.refreshTheme();
+    }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         int key = event.getKeyCode();
@@ -170,6 +187,7 @@ public final class MainActivity extends Activity {
     private void stopMedia() { if (study != null) { study.close(); study = null; } }
     private void renderCurrent() {
         if (repository == null) return;
+        theme.refresh(repository.settings().themeMode, null); theme.applyWindow(this, false);
         stopMedia(); renderVersion++; scroll = null; pageRoot = null; defaultFocus = null;
         balanceLabel = null; dailyLabel = null; statusLabel = null; monitorAdvice = null; pinGrid = null;
         targets.clear(); menu.clear(); menuByName.clear();
@@ -202,12 +220,12 @@ public final class MainActivity extends Activity {
 
     private void shell(String title, String subtitle) {
         boolean modal = "pin".equals(pageName) || "confirm".equals(pageName);
-        LinearLayout root = TvUiTheme.row(this); root.setGravity(Gravity.TOP); root.setBackgroundColor(TvUiTheme.CREAM);
+        LinearLayout root = TvUiTheme.row(this); root.setGravity(Gravity.TOP); theme.backgroundColor(root, BACKGROUND);
         root.setPadding(dp(30), dp(22), dp(30), dp(22));
         if (!modal) {
             LinearLayout nav = TvUiTheme.column(this); nav.setPadding(0, dp(6), dp(18), 0);
-            nav.addView(new LearningMascotView(this), new LinearLayout.LayoutParams(-1, dp(88)));
-            TextView brand = TvUiTheme.title(this, getString(R.string.app_name), 23);
+            nav.addView(new LearningMascotView(this, theme), new LinearLayout.LayoutParams(-1, dp(88)));
+            TextView brand = theme.title(getString(R.string.app_name), 23);
             brand.setGravity(Gravity.CENTER_HORIZONTAL);
             brand.setContentDescription(getString(R.string.product_name));
             nav.addView(brand, new LinearLayout.LayoutParams(-1, -2));
@@ -223,14 +241,14 @@ public final class MainActivity extends Activity {
             }
         }; scroll.setSmoothScrollingEnabled(false); scroll.setFillViewport(true); scroll.setClipChildren(false); scroll.setClipToPadding(false);
         content = TvUiTheme.column(this); content.setPadding(dp(modal ? 96 : 10), dp(4), dp(modal ? 96 : 10), dp(18));
-        content.addView(TvUiTheme.title(this, title, 30));
-        if (subtitle != null && !subtitle.isEmpty()) TvUiTheme.add(content, TvUiTheme.text(this, subtitle, 17, TvUiTheme.MUTED), 5);
+        content.addView(theme.title(title, 30));
+        if (subtitle != null && !subtitle.isEmpty()) TvUiTheme.add(content, theme.text(subtitle, 17, MUTED), 5);
         scroll.addView(content, new ScrollView.LayoutParams(-1, -2)); root.addView(scroll, new LinearLayout.LayoutParams(0, -1, 1));
         pageRoot = root; setContentView(root); TvUiTheme.enter(content);
     }
     private int dp(int value) { return TvUiTheme.dp(this, value); }
     private void menuItem(LinearLayout nav, String label, String name) {
-        Button item = TvUiTheme.button(this, label, name.equals(section()), () -> {
+        Button item = theme.button(label, name.equals(section()), () -> {
             if ("parent".equals(name) && !protectedPage(navigation.current().name)) parentAuthenticated = false;
             go(new Screen(name));
         });
@@ -242,10 +260,10 @@ public final class MainActivity extends Activity {
         view.setTag(key); targets.add(view); if (defaultFocus == null) defaultFocus = view;
     }
     private LinearLayout tile(String key, String title, String detail, Runnable action) {
-        LinearLayout tile = TvUiTheme.card(this, TvUiTheme.WHITE);
-        tile.addView(TvUiTheme.title(this, title, 23));
-        if (detail != null && !detail.isEmpty()) TvUiTheme.add(tile, TvUiTheme.text(this, detail, 18, TvUiTheme.MUTED), 6);
-        TvUiTheme.selectableCard(tile, TvUiTheme.WHITE, action); register(tile, key); TvUiTheme.add(content, tile, 12); return tile;
+        LinearLayout tile = theme.card(SURFACE);
+        tile.addView(theme.title(title, 23));
+        if (detail != null && !detail.isEmpty()) TvUiTheme.add(tile, theme.text(detail, 18, MUTED), 6);
+        theme.selectableCard(tile, SURFACE, action); register(tile, key); TvUiTheme.add(content, tile, 12); return tile;
     }
     private void action(String key, String label, Runnable action) { tile(key, label, "", action); }
     private void wireFocus() {
@@ -280,23 +298,23 @@ public final class MainActivity extends Activity {
     private void home() {
         ParentSettings settings = repository.settings(); LearningState.Snapshot state = repository.snapshot();
         shell("出发吧！", "");
-        LinearLayout hero = TvUiTheme.card(this, TvUiTheme.MINT), row = TvUiTheme.row(this), copy = TvUiTheme.column(this);
-        copy.addView(TvUiTheme.text(this, settings.stage + " / " + ("KET".equals(settings.stage) ? "A2 基础巩固" : "B1 进阶应用"), 17, TvUiTheme.TEAL));
-        TvUiTheme.add(copy, TvUiTheme.title(this, state.activeSessionId != null ? "继续探险  ›" : "开始探险  ›", 28), 6);
+        LinearLayout hero = theme.card(ACCENT_SURFACE), row = TvUiTheme.row(this), copy = TvUiTheme.column(this);
+        copy.addView(theme.text(settings.stage + " / " + ("KET".equals(settings.stage) ? "A2 基础巩固" : "B1 进阶应用"), 17, ACCENT));
+        TvUiTheme.add(copy, theme.title(state.activeSessionId != null ? "继续探险  ›" : "开始探险  ›", 28), 6);
         LearningState.Session current = repository.currentSession(); int count = current != null ? current.taskCount : settings.taskCount;
         long reward = Math.min(current != null ? current.rewardMs : settings.rewardMinutes * 60000L, state.dailyRemainingMs);
-        TvUiTheme.add(copy, TvUiTheme.text(this, state.dailyRemainingMs == 0 ? "今天继续学，明天再换时" : (state.balanceMs > 0 ? "自由练习" : count + " 题 → +" + TvUiTheme.minutes(reward)), 21, TvUiTheme.INK), 8);
-        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1)); row.addView(new LearningMascotView(this), new LinearLayout.LayoutParams(dp(138), dp(110)));
-        hero.addView(row); TvUiTheme.selectableCard(hero, TvUiTheme.MINT, () -> go(new Screen("study"))); register(hero, "home:learn"); TvUiTheme.add(content, hero, 14);
-        LinearLayout metrics = TvUiTheme.row(this), balance = TvUiTheme.card(this, TvUiTheme.WHITE), daily = TvUiTheme.card(this, TvUiTheme.WHITE);
-        balance.addView(TvUiTheme.text(this, state.balanceMs > 0 ? "本轮可看 · 确认观看 ›" : "本轮可看", 17, TvUiTheme.MUTED));
-        balanceLabel = TvUiTheme.title(this, TvUiTheme.duration(state.balanceMs), 31); TvUiTheme.add(balance, balanceLabel, 4);
-        if (state.balanceMs > 0) { TvUiTheme.selectableCard(balance, TvUiTheme.WHITE, this::openPlayer); register(balance, "home:watch"); }
-        daily.addView(TvUiTheme.text(this, "今日还可看", 17, TvUiTheme.MUTED)); dailyLabel = TvUiTheme.title(this, TvUiTheme.minutes(state.dailyRemainingMs), 31); TvUiTheme.add(daily, dailyLabel, 4);
+        TvUiTheme.add(copy, theme.text(state.dailyRemainingMs == 0 ? "今天继续学，明天再换时" : (state.balanceMs > 0 ? "自由练习" : count + " 题 → +" + TvUiTheme.minutes(reward)), 21, TEXT), 8);
+        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1)); row.addView(new LearningMascotView(this, theme), new LinearLayout.LayoutParams(dp(138), dp(110)));
+        hero.addView(row); theme.selectableCard(hero, ACCENT_SURFACE, () -> go(new Screen("study"))); register(hero, "home:learn"); TvUiTheme.add(content, hero, 14);
+        LinearLayout metrics = TvUiTheme.row(this), balance = theme.card(SURFACE), daily = theme.card(SURFACE);
+        balance.addView(theme.text(state.balanceMs > 0 ? "本轮可看 · 确认观看 ›" : "本轮可看", 17, MUTED));
+        balanceLabel = theme.title(TvUiTheme.duration(state.balanceMs), 31); TvUiTheme.add(balance, balanceLabel, 4);
+        if (state.balanceMs > 0) { theme.selectableCard(balance, SURFACE, this::openPlayer); register(balance, "home:watch"); }
+        daily.addView(theme.text("今日还可看", 17, MUTED)); dailyLabel = theme.title(TvUiTheme.minutes(state.dailyRemainingMs), 31); TvUiTheme.add(daily, dailyLabel, 4);
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, -2, 1); size.rightMargin = dp(12);
         metrics.addView(balance, size); metrics.addView(daily, new LinearLayout.LayoutParams(0, -2, 1)); TvUiTheme.add(content, metrics, 14);
-        TvUiTheme.add(content, TvUiTheme.text(this, "已学 " + state.learnedCount + " · 待复习 " + state.dueCount + " · 已掌握 " + state.masteredCount, 18, TvUiTheme.MUTED), 14);
-        statusLabel = TvUiTheme.text(this, "", 15, TvUiTheme.MUTED); TvUiTheme.add(content, statusLabel, 8); refreshHomeCounters();
+        TvUiTheme.add(content, theme.text("已学 " + state.learnedCount + " · 待复习 " + state.dueCount + " · 已掌握 " + state.masteredCount, 18, MUTED), 14);
+        statusLabel = theme.text("", 15, MUTED); TvUiTheme.add(content, statusLabel, 8); refreshHomeCounters();
     }
     private void refreshHomeCounters() {
         if (repository == null) return;
@@ -332,7 +350,7 @@ public final class MainActivity extends Activity {
         String stage = repository.settings().stage; shell(stage + " 探险地图", "");
         List<VocabularyCatalog.Item> items = repository.curriculum().stage(stage); Map<String, LearningState.ItemProgress> progress = new HashMap<>(); int learnedTotal = 0;
         for (LearningState.ItemProgress p : repository.progress(stage)) { progress.put(p.itemId, p); if (p.learned) learnedTotal++; }
-        TvUiTheme.add(content, TvUiTheme.text(this, "已学 " + learnedTotal + " / " + items.size() + " · " + ((items.size() + 19) / 20) + " 个单元", 20, TvUiTheme.TEAL), 10);
+        TvUiTheme.add(content, theme.text("已学 " + learnedTotal + " / " + items.size() + " · " + ((items.size() + 19) / 20) + " 个单元", 20, ACCENT), 10);
         int current = Math.min(repository.settings().currentUnit, Math.max(0, (items.size() - 1) / 20));
         for (int unit = current; unit * 20 < items.size(); unit++) {
             boolean done = true;
@@ -362,9 +380,9 @@ public final class MainActivity extends Activity {
     private void records() {
         LearningState.Snapshot state = repository.snapshot(); shell("我的学习足迹", "");
         LinearLayout overview = tile("records:review", "我的成长 · 复习与错题  ›", "", () -> go(new Screen("review")));
-        overview.addView(new ProgressChartsView(this, state), new LinearLayout.LayoutParams(-1, dp(110)));
+        overview.addView(new ProgressChartsView(this, theme, state), new LinearLayout.LayoutParams(-1, dp(110)));
         LinearLayout week = tile("records:week", "最近 7 天", "", null);
-        week.addView(new ProgressChartsView(this, repository.history(), state.day), new LinearLayout.LayoutParams(-1, dp(160)));
+        week.addView(new ProgressChartsView(this, theme, repository.history(), state.day), new LinearLayout.LayoutParams(-1, dp(160)));
     }
     private void reviewList() {
         shell("待复习与错题", ""); boolean found = false;
@@ -372,7 +390,7 @@ public final class MainActivity extends Activity {
             VocabularyCatalog.Item item = repository.curriculum().get(p.itemId); if (item == null) continue; found = true;
             tile("review:word:" + item.id, item.word + "  ›", item.meaning + " · " + (p.wrongCount > 0 ? "错题 " + p.wrongCount + " 次" : "复习中") + " · 下次 " + p.dueDay, () -> go(new Screen("word", item.id)));
         }
-        if (!found) TvUiTheme.add(content, TvUiTheme.text(this, "暂时没有待复习词汇", 22, TvUiTheme.MUTED), 24);
+        if (!found) TvUiTheme.add(content, theme.text("暂时没有待复习词汇", 22, MUTED), 24);
     }
 
     private interface Change { void apply(ParentSettings settings); }
@@ -384,10 +402,10 @@ public final class MainActivity extends Activity {
             catch (RuntimeException e) { toast("设置未保存，请重试"); }
         });
     }
-    private void sectionTitle(String label) { TvUiTheme.add(content, TvUiTheme.title(this, label, 22), 20); }
+    private void sectionTitle(String label) { TvUiTheme.add(content, theme.title(label, 22), 20); }
     private void parent() {
         ParentSettings s = repository.settings(); shell("家长配置", "确认键切换设置 · 每日上限即时生效");
-        statusLabel = TvUiTheme.text(this, "", 18, TvUiTheme.TEAL); TvUiTheme.add(content, statusLabel, 10); refreshHomeCounters();
+        statusLabel = theme.text("", 18, ACCENT); TvUiTheme.add(content, statusLabel, 10); refreshHomeCounters();
         sectionTitle("观看规则");
         setting("parent:enabled", "观看管控", s.enabled ? "开启" : "关闭", v -> v.enabled = !v.enabled);
         setting("parent:tasks", "每轮主任务", s.taskCount + " 项", v -> v.taskCount = cycle(v.taskCount, new int[]{3, 5, 8, 10}));
@@ -401,7 +419,9 @@ public final class MainActivity extends Activity {
         setting("parent:volume", "发音音量", s.volume + "%", v -> v.volume = cycle(v.volume, new int[]{25, 50, 80, 100}));
         setting("parent:speak", "单词自动发音", s.autoSpeak ? "开启" : "关闭", v -> v.autoSpeak = !v.autoSpeak);
         setting("parent:hints", "中文辅助", s.chineseHints ? "开启" : "关闭", v -> v.chineseHints = !v.chineseHints);
-        sectionTitle("系统与记录"); action("parent:monitor", "监控检查 · 开机恢复  ›", () -> go(new Screen("monitor")));
+        sectionTitle("系统与记录");
+        tile("parent:theme", "界面主题", s.themeMode.label, this::changeTheme);
+        action("parent:monitor", "监控检查 · 开机恢复  ›", () -> go(new Screen("monitor")));
         action("parent:system", "电视系统设置  ›", this::openSystemSettings);
         action("parent:demo", "体验演示  ›", () -> go(new Screen("study", "demo")));
         action("parent:records", "观看与学习记录  ›", () -> go(new Screen("records")));
@@ -410,16 +430,26 @@ public final class MainActivity extends Activity {
         action("parent:defaults", "恢复默认配置  ›", () -> go(new Screen("confirm", "defaults")));
         action("parent:reset", "清除学习与观看记录  ›", () -> go(new Screen("confirm", "reset")));
     }
+    private void changeTheme() {
+        if (!parentAuthenticated) { renderCurrent(); return; }
+        try {
+            remember();
+            ParentSettings settings = repository.settings(); settings.themeMode = settings.themeMode.next();
+            repository.saveSettings(settings);
+            renderCurrent();
+            if (PlaybackAccessService.instance != null) PlaybackAccessService.instance.appearanceChanged();
+        } catch (RuntimeException error) { toast("设置未保存，请重试"); }
+    }
     private void monitor() {
         shell("监控检查", "开机后在后台恢复，保留电视原画面");
-        LinearLayout card = TvUiTheme.card(this, TvUiTheme.WHITE);
-        statusLabel = TvUiTheme.title(this, "", 24); statusLabel.setTag("monitor:status"); card.addView(statusLabel);
-        monitorAdvice = TvUiTheme.text(this, "", 19, TvUiTheme.MUTED); TvUiTheme.add(card, monitorAdvice, 12);
+        LinearLayout card = theme.card(SURFACE);
+        statusLabel = theme.title("", 24); statusLabel.setTag("monitor:status"); card.addView(statusLabel);
+        monitorAdvice = theme.text("", 19, MUTED); TvUiTheme.add(card, monitorAdvice, 12);
         TvUiTheme.add(content, card, 16);
         action("monitor:system", "开启 / 检查无障碍服务  ›", this::openSystemSettings);
-        TvUiTheme.add(content, TvUiTheme.text(this, "在电视无障碍设置开启「电视英语 · 观看管控」。\n授权保留时，系统会在开机时重新连接，无需先打开电视英语。", 19, TvUiTheme.MUTED), 16);
-        TvUiTheme.add(content, TvUiTheme.text(this, "只计云视听小电视的实际播放。零余额先学习；观看时间用完再次学习。暂停、待机和学习期间不扣时。", 19, TvUiTheme.MUTED), 12);
-        TvUiTheme.add(content, TvUiTheme.text(this, "部分电视待机会强停应用并关闭无障碍授权。若唤醒后未生效，请重新开启服务；可在电视管家检查后台运行限制。", 17, TvUiTheme.MUTED), 10);
+        TvUiTheme.add(content, theme.text("在电视无障碍设置开启「电视英语 · 观看管控」。\n授权保留时，系统会在开机时重新连接，无需先打开电视英语。", 19, MUTED), 16);
+        TvUiTheme.add(content, theme.text("只计云视听小电视的实际播放。零余额先学习；观看时间用完再次学习。暂停、待机和学习期间不扣时。", 19, MUTED), 12);
+        TvUiTheme.add(content, theme.text("部分电视待机会强停应用并关闭无障碍授权。若唤醒后未生效，请重新开启服务；可在电视管家检查后台运行限制。", 17, MUTED), 10);
         refreshHomeCounters();
     }
     private String monitorAdvice(PlaybackAccessStatus.Kind kind) {
@@ -451,7 +481,7 @@ public final class MainActivity extends Activity {
     }
     private void sources() {
         shell("课程与内容来源", "版本 " + VocabularyCatalog.VERSION);
-        TvUiTheme.add(content, TvUiTheme.text(this, "KET " + repository.curriculum().stage("KET").size() + " 项 · PET " + repository.curriculum().stage("PET").size() + " 项", 23, TvUiTheme.TEAL), 16);
+        TvUiTheme.add(content, theme.text("KET " + repository.curriculum().stage("KET").size() + " 项 · PET " + repository.curriculum().stage("PET").size() + " 项", 23, ACCENT), 16);
         try {
             String[] files = getAssets().list("licenses");
             if (files != null) for (String name : files) action("sources:" + name, name + "  ›", () -> go(new Screen("license", name)));
@@ -462,7 +492,7 @@ public final class MainActivity extends Activity {
         shell("来源与授权", name);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(getAssets().open("licenses/" + name), "UTF-8"))) {
             StringBuilder all = new StringBuilder(); String line; while ((line = reader.readLine()) != null) all.append(line).append('\n');
-            TextView text = TvUiTheme.text(this, all.toString(), 18, TvUiTheme.INK); text.setFocusable(true); register(text, "license:text");
+            TextView text = theme.text(all.toString(), 18, TEXT); text.setFocusable(true); register(text, "license:text");
             text.setOnKeyListener((v, key, event) -> {
                 if (key != KeyEvent.KEYCODE_DPAD_UP && key != KeyEvent.KEYCODE_DPAD_DOWN) return false;
                 if (event.getAction() == KeyEvent.ACTION_DOWN) scroll.smoothScrollBy(0, dp(key == KeyEvent.KEYCODE_DPAD_DOWN ? 180 : -180));
@@ -474,15 +504,15 @@ public final class MainActivity extends Activity {
     private void renderPin(String mode) {
         pinSetup = !repository.hasPin() || "change-new".equals(mode); pinInput = ""; pendingPin = null; confirmingPin = false; pinBusy = false;
         shell(pinSetup ? "设置家长 PIN" : "验证家长 PIN", mode.startsWith("action-") ? "修改本机数据前再次验证" : "");
-        LinearLayout box = TvUiTheme.card(this, TvUiTheme.WHITE);
-        pinDots = TvUiTheme.title(this, "○   ○   ○   ○", 31); pinDots.setGravity(Gravity.CENTER); box.addView(pinDots);
-        pinMessage = TvUiTheme.text(this, "输入 4 位数字", 18, TvUiTheme.MUTED); pinMessage.setGravity(Gravity.CENTER); TvUiTheme.add(box, pinMessage, 6);
+        LinearLayout box = theme.card(SURFACE);
+        pinDots = theme.title("○   ○   ○   ○", 31); pinDots.setGravity(Gravity.CENTER); box.addView(pinDots);
+        pinMessage = theme.text("输入 4 位数字", 18, MUTED); pinMessage.setGravity(Gravity.CENTER); TvUiTheme.add(box, pinMessage, 6);
         pinGrid = new Button[4][3];
         for (int r = 0; r < 4; r++) {
             LinearLayout line = TvUiTheme.row(this);
             for (int c = 0; c < 3; c++) {
                 final String label = r < 3 ? Integer.toString(r * 3 + c + 1) : new String[]{"删除", "0", "确认"}[c];
-                Button key = TvUiTheme.button(this, label, r == 3 && c == 2, () -> {
+                Button key = theme.button(label, r == 3 && c == 2, () -> {
                     if ("删除".equals(label)) pinDelete(); else if ("确认".equals(label)) pinConfirm(); else pinDigit(label);
                 }); key.setTextSize(23); register(key, "pin:" + label); pinGrid[r][c] = key;
                 LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(0, dp(55), 1); size.setMargins(dp(5), dp(4), dp(5), 0); line.addView(key, size);
@@ -533,9 +563,9 @@ public final class MainActivity extends Activity {
     }
     private void fatal() {
         stopMedia(); pageName = "error"; scroll = null; targets.clear(); menu.clear(); menuByName.clear();
-        LinearLayout root = TvUiTheme.column(this); root.setPadding(dp(48), dp(30), dp(48), dp(30)); root.setBackgroundColor(TvUiTheme.CREAM);
-        root.addView(TvUiTheme.title(this, "需要一点帮助", 30)); TvUiTheme.add(root, TvUiTheme.text(this, "本机课程或学习数据暂时无法读取", 22, TvUiTheme.MUTED), 16);
-        Button retry = TvUiTheme.button(this, "重试", true, () -> { try { repository = LearningRepository.get(this); renderCurrent(); } catch (RuntimeException e) { fatal(); } });
+        LinearLayout root = TvUiTheme.column(this); root.setPadding(dp(48), dp(30), dp(48), dp(30)); theme.backgroundColor(root, BACKGROUND);
+        root.addView(theme.title("需要一点帮助", 30)); TvUiTheme.add(root, theme.text("本机课程或学习数据暂时无法读取", 22, MUTED), 16);
+        Button retry = theme.button("重试", true, () -> { try { repository = LearningRepository.get(this); renderCurrent(); } catch (RuntimeException e) { fatal(); } });
         TvUiTheme.add(root, retry, 24); register(retry, "error:retry"); defaultFocus = retry; pageRoot = root; setContentView(root); retry.requestFocus();
     }
 }

@@ -92,12 +92,12 @@ final class PlaybackAccessServiceChecks {
         serviceGate = field(PlaybackAccessService.class, "gate"); sampleCount = field(PlaybackAccessService.class, "samples");
         studyScreen = field(PlaybackAccessService.class, "screen"); onFinished = field(LessonScreen.class, "onFinished");
     }
-    static int run(Instrumentation i, Context c, boolean standby) throws Exception {
+    static int run(Instrumentation i, Context c, boolean standby, ThemeMode themeMode) throws Exception {
         PlaybackAccessServiceChecks checks = new PlaybackAccessServiceChecks(i, c);
         checks.testStandby = standby;
-        try { checks.run(); return checks.assertions; } finally { checks.close(); }
+        try { checks.run(themeMode); return checks.assertions; } finally { checks.close(); }
     }
-    private void run() throws Exception {
+    private void run(ThemeMode themeMode) throws Exception {
         check(PlaybackAccessService.instance == null, "disable only the English service before isolated monitor checks");
         assertions += VolumeFadeDeviceChecks.run(instrument, context);
         context.deleteDatabase(database); context.getSharedPreferences(preferences, 0).edit().clear().commit();
@@ -107,7 +107,8 @@ final class PlaybackAccessServiceChecks {
             public String day() { return java.time.LocalDate.now().toString(); }
             public long now() { return System.currentTimeMillis(); }
         }, database, preferences);
-        repo.setPin("2468"); ParentSettings settings = repo.settings(); settings.enabled = true; settings.autoSpeak = false; repo.saveSettings(settings);
+        repo.setPin("2468"); ParentSettings settings = repo.settings(); settings.enabled = true; settings.autoSpeak = false;
+        settings.themeMode = themeMode; repo.saveSettings(settings);
         synchronized (LearningRepository.class) { original = singleton.get(null); singleton.set(null, repo); installed = true; }
         if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(receiver, new IntentFilter(ACTION), Context.RECEIVER_EXPORTED);
         else context.registerReceiver(receiver, new IntentFilter(ACTION));

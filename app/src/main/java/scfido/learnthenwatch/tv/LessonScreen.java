@@ -1,5 +1,7 @@
 package scfido.learnthenwatch.tv;
 
+import static scfido.learnthenwatch.tv.TvUiTheme.Role.*;
+
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -7,7 +9,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.SpannableString;
 import android.text.Spanned;
-import android.text.style.ForegroundColorSpan;
 import android.text.style.StyleSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -27,6 +28,7 @@ import java.util.regex.Pattern;
 public final class LessonScreen {
     private final Context context;
     private final LearningRepository repository;
+    private final TvUiTheme theme;
     private final Runnable onFinished, onExit, onHome;
     private boolean preparing;
     private final boolean demo;
@@ -59,6 +61,7 @@ public final class LessonScreen {
     LessonScreen(Context context, LearningRepository repository, Runnable onFinished, Runnable onExit,
             Runnable onHome, boolean demo, VocabularyCatalog.Item review, boolean preparing) {
         this.context = context; this.repository = repository; this.onFinished = onFinished; this.onExit = onExit; this.onHome = onHome; this.demo = demo;
+        theme = new TvUiTheme(context, repository.settings().themeMode);
         this.preparing = preparing;
         this.review = review;
         root = new FrameLayout(context) {
@@ -98,7 +101,7 @@ public final class LessonScreen {
             }
             @Override protected void onDetachedFromWindow() { pauseAudio(); super.onDetachedFromWindow(); }
         };
-        root.setTag("study:root"); root.setBackgroundColor(TvUiTheme.CREAM);
+        root.setTag("study:root"); theme.backgroundColor(root, BACKGROUND);
         root.setFocusable(true); root.setFocusableInTouchMode(true);
         // Overlay attachment requests focus again. Prefer an enabled answer/action;
         // the root is only a fallback while listening or showing a buttonless page.
@@ -107,6 +110,7 @@ public final class LessonScreen {
         audio = new PronunciationPlayer(context); render();
     }
     public View view() { return root; }
+    public void refreshTheme() { theme.refresh(repository.settings().themeMode, root); }
     public void pauseAudio() { paused = true; generation++; handler.removeCallbacksAndMessages(null); audio.stop(); }
     public void resume() { paused = false; render(); }
     public void close() { closed = true; pauseAudio(); }
@@ -136,7 +140,7 @@ public final class LessonScreen {
 
     private int dp(float value) { return TvUiTheme.dp(context, value); }
     private TextView fit(CharSequence value, int max, int min) {
-        TextView text = TvUiTheme.text(context, "", max, TvUiTheme.INK);
+        TextView text = theme.text("", max, TEXT);
         text.setText(value); text.setGravity(Gravity.CENTER_VERTICAL);
         text.setAutoSizeTextTypeUniformWithConfiguration(min, max, 1, TypedValue.COMPLEX_UNIT_SP);
         text.setLineSpacing(0, 1.06f); return text;
@@ -151,20 +155,20 @@ public final class LessonScreen {
         page = TvUiTheme.column(context); page.setPadding(dp(30), dp(18), dp(30), dp(18));
         root.addView(page, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout header = TvUiTheme.row(context);
-        TextView stage = fit(label, 18, 15); stage.setTextColor(TvUiTheme.TEAL);
+        TextView stage = fit(label, 18, 15); theme.textColor(stage, ACCENT);
         LinearLayout.LayoutParams badge = new LinearLayout.LayoutParams(dp(124), -1);
         header.addView(stage, badge);
-        View trail = new Trail(context, done, Math.max(1, total)); trail.setTag("study:progress");
+        View trail = new Trail(context, theme, done, Math.max(1, total)); trail.setTag("study:progress");
         trail.setContentDescription("已完成 " + done + " / " + total);
         header.addView(trail, new LinearLayout.LayoutParams(0, -1, 1));
-        companion = new LearningMascotView(context); header.addView(companion, new LinearLayout.LayoutParams(dp(64), -1));
+        companion = new LearningMascotView(context, theme); header.addView(companion, new LinearLayout.LayoutParams(dp(64), -1));
         page.addView(header, new LinearLayout.LayoutParams(-1, dp(48)));
         body = TvUiTheme.row(context); body.setBaselineAligned(false); body.setGravity(Gravity.TOP);
         body.setTag("study:body");
         LinearLayout.LayoutParams main = new LinearLayout.LayoutParams(-1, 0, 1); main.topMargin = dp(14);
         page.addView(body, main);
         left = TvUiTheme.column(context); left.setPadding(dp(22), dp(14), dp(22), dp(14));
-        left.setBackground(TvUiTheme.shape(context, TvUiTheme.WHITE, TvUiTheme.LINE, 1, 24));
+        theme.background(left, SURFACE, LINE, 1, 24);
         body.addView(left, new LinearLayout.LayoutParams(0, -1, 1.2f));
         choices = TvUiTheme.column(context);
         LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, -1, 1); right.leftMargin = dp(22);
@@ -172,7 +176,7 @@ public final class LessonScreen {
         footer = TvUiTheme.row(context);
         LinearLayout.LayoutParams bottom = new LinearLayout.LayoutParams(-1, dp(54)); bottom.topMargin = dp(12);
         page.addView(footer, bottom);
-        status = fit("", 18, 15); status.setTag("study:audio-status"); status.setTextColor(TvUiTheme.MUTED);
+        status = fit("", 18, 15); status.setTag("study:audio-status"); theme.textColor(status, MUTED);
         status.setVisibility(View.INVISIBLE);
         footer.addView(status, new LinearLayout.LayoutParams(0, -1, 1));
         TvUiTheme.enter(body);
@@ -210,7 +214,7 @@ public final class LessonScreen {
         boolean listening = "LISTEN".equals(task.type);
         if (listening) {
             fixedText(left, "听一听", 32, 26, 60);
-            left.addView(new LearningMascotView(context), new LinearLayout.LayoutParams(-1, 0, 1));
+            left.addView(new LearningMascotView(context, theme), new LinearLayout.LayoutParams(-1, 0, 1));
             fixedText(left, "♪  ♪  ♪", 32, 26, 58);
         } else if ("SENTENCE".equals(task.type)) {
             fixedText(left, "补全句子", 24, 20, 38);
@@ -226,12 +230,12 @@ public final class LessonScreen {
         } else {
             TextView word = fit(value.word, 50, 27); word.setTag("study:word");
             word.setTypeface(null, android.graphics.Typeface.BOLD); left.addView(word, new LinearLayout.LayoutParams(-1, 0, 1));
-            left.addView(new LearningMascotView(context), new LinearLayout.LayoutParams(-1, 0, 1.1f));
+            left.addView(new LearningMascotView(context, theme), new LinearLayout.LayoutParams(-1, 0, 1.1f));
             fixedText(left, "选出词义", 22, 19, 40);
         }
         for (int n = 0; n < task.options.length; n++) {
             final int index = n;
-            Button option = TvUiTheme.button(context, (char) ('A' + n) + "   " + task.options[n], false, () -> answer(task, index, false));
+            Button option = theme.button((char) ('A' + n) + "   " + task.options[n], false, () -> answer(task, index, false));
             option.setTag("study:option:" + n); option.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
             option.setId(View.generateViewId());
             option.setAutoSizeTextTypeUniformWithConfiguration(18, 27, 1, TypedValue.COMPLEX_UNIT_SP);
@@ -257,13 +261,13 @@ public final class LessonScreen {
         SpannableString text = new SpannableString(sentence);
         Matcher matcher = Pattern.compile(Pattern.quote(word), Pattern.CASE_INSENSITIVE).matcher(sentence);
         if (matcher.find()) {
-            text.setSpan(new ForegroundColorSpan(TvUiTheme.TEAL), matcher.start(), matcher.end(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            text.setSpan(theme.accentSpan(), matcher.start(), matcher.end(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             text.setSpan(new StyleSpan(android.graphics.Typeface.BOLD), matcher.start(), matcher.end(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return text;
     }
     private Button footerButton(String title, boolean primary, Runnable action, int width) {
-        Button button = TvUiTheme.button(context, title, primary, () -> { if (!preparing) action.run(); }); button.setTextSize(18);
+        Button button = theme.button(title, primary, () -> { if (!preparing) action.run(); }); button.setTextSize(18);
         button.setId(View.generateViewId());
         button.setNextFocusUpId(button.getId()); button.setNextFocusDownId(button.getId());
         button.setNextFocusLeftId(button.getId()); button.setNextFocusRightId(button.getId());
@@ -327,9 +331,9 @@ public final class LessonScreen {
             else correct = repository.submitAnswer(session.id, task, choice).correct;
             if (correct) {
                 Button selected = answers.get(choice);
-                TvUiTheme.buttonStyle(selected, TvUiTheme.MINT, TvUiTheme.TEAL, 3); selected.setTextColor(TvUiTheme.TEAL);
+                theme.correctAnswer(selected);
                 selected.setText("✓  " + task.options[choice]); selected.setAlpha(.6f); selected.animate().alpha(1).setDuration(180).start();
-                status.setText("答对啦！"); status.setTextColor(TvUiTheme.TEAL); companion.happy();
+                status.setText("答对啦！"); theme.textColor(status, ACCENT); companion.happy();
                 status.setText("答对啦！ · → 下一个");
                 nextAction = this::transitionNext;
                 secondary.setText("下一个 →"); secondary.setEnabled(true);
@@ -340,7 +344,7 @@ public final class LessonScreen {
                 detail(item(task));
                 for (int n = 0; n < answers.size(); n++) {
                     Button option = answers.get(n);
-                    if (n == task.correct) { TvUiTheme.buttonStyle(option, TvUiTheme.MINT, TvUiTheme.TEAL, 3); option.setTextColor(TvUiTheme.TEAL); option.setText("✓  " + task.options[n]); }
+                    if (n == task.correct) { theme.correctAnswer(option); option.setText("✓  " + task.options[n]); }
                     else option.setAlpha(.32f);
                 }
                 clearFooter(unknown ? "← 重听 · 一起记住它" : "← 重听 · 再记一下");
@@ -359,7 +363,7 @@ public final class LessonScreen {
         } catch (RuntimeException error) { failure(error); }
     }
     private void clearFooter(String text) {
-        footer.removeAllViews(); status = fit(text, 18, 15); status.setTag("study:audio-status"); status.setTextColor(TvUiTheme.MUTED);
+        footer.removeAllViews(); status = fit(text, 18, 15); status.setTag("study:audio-status"); theme.textColor(status, MUTED);
         status.setVisibility(View.INVISIBLE);
         footer.addView(status, new LinearLayout.LayoutParams(0, -1, 1));
     }
@@ -371,23 +375,23 @@ public final class LessonScreen {
         later(this::render, 150);
     }
     private void detail(VocabularyCatalog.Item value) {
-        left.removeAllViews(); left.setBackground(TvUiTheme.shape(context, TvUiTheme.WHITE, TvUiTheme.LINE, 1, 24));
+        left.removeAllViews(); theme.background(left, SURFACE, LINE, 1, 24);
         TextView word = fit(value.word, 35, 24); word.setTypeface(null, android.graphics.Typeface.BOLD); word.setTag("study:word");
         left.addView(word, new LinearLayout.LayoutParams(-1, dp(58)));
-        TextView meaning = fit(value.meaning, 25, 18); meaning.setTextColor(TvUiTheme.TEAL);
+        TextView meaning = fit(value.meaning, 25, 18); theme.textColor(meaning, ACCENT);
         left.addView(meaning, new LinearLayout.LayoutParams(-1, dp(64)));
         if (value.naturalExample()) {
             TextView example = fit(highlight(value.example, value.word), 23, 17); example.setTag("study:example");
             left.addView(example, new LinearLayout.LayoutParams(-1, 0, 1));
             if (repository.settings().chineseHints) {
-                TextView translation = fit(value.translation, 19, 16); translation.setTextColor(TvUiTheme.MUTED);
+                TextView translation = fit(value.translation, 19, 16); theme.textColor(translation, MUTED);
                 left.addView(translation, new LinearLayout.LayoutParams(-1, dp(64)));
             }
-        } else left.addView(new LearningMascotView(context), new LinearLayout.LayoutParams(-1, 0, 1));
+        } else left.addView(new LearningMascotView(context, theme), new LinearLayout.LayoutParams(-1, 0, 1));
     }
     private void showGuided(LearningState.Task task) {
         detail(item(task));
-        LearningMascotView partner = new LearningMascotView(context); partner.happy(); choices.addView(partner, new LinearLayout.LayoutParams(-1, 0, 1));
+        LearningMascotView partner = new LearningMascotView(context, theme); partner.happy(); choices.addView(partner, new LinearLayout.LayoutParams(-1, 0, 1));
         fixedText(choices, "一起记住它", 26, 22, 64);
         clearFooter(""); if (!"SENTENCE".equals(task.type)) addReplay(item(task), false);
         nextAction = () -> {
@@ -408,7 +412,7 @@ public final class LessonScreen {
     }
     private void showReview() {
         reset(review.stage + " 词卡", 0, 1); detail(review);
-        choices.addView(new LearningMascotView(context), new LinearLayout.LayoutParams(-1, 0, 1));
+        choices.addView(new LearningMascotView(context, theme), new LinearLayout.LayoutParams(-1, 0, 1));
         fixedText(choices, review.topic, 23, 18, 54);
         clearFooter(""); addReplay(review, false);
         status.setText("← / 确认 重听"); root.requestFocus();
@@ -418,8 +422,8 @@ public final class LessonScreen {
         preparing = false;
         int total = demo ? 3 : session.taskCount;
         reset(demo ? "体验完成" : "本轮完成", total, total); companion.happy();
-        LearningMascotView partner = new LearningMascotView(context); partner.happy(); left.addView(partner, new LinearLayout.LayoutParams(-1, -1));
-        TextView headline = fit(title, 40, 28); headline.setTextColor(TvUiTheme.TEAL); headline.setTypeface(null, android.graphics.Typeface.BOLD);
+        LearningMascotView partner = new LearningMascotView(context, theme); partner.happy(); left.addView(partner, new LinearLayout.LayoutParams(-1, -1));
+        TextView headline = fit(title, 40, 28); theme.textColor(headline, ACCENT); headline.setTypeface(null, android.graphics.Typeface.BOLD);
         choices.addView(headline, new LinearLayout.LayoutParams(-1, 0, 1));
         String summary = demo ? "" : "本轮可看 " + TvUiTheme.duration(state.balanceMs) + "\n今日还可看 " + TvUiTheme.minutes(state.dailyRemainingMs);
         choices.addView(fit(summary, 23, 19), new LinearLayout.LayoutParams(-1, 0, 1));
@@ -460,21 +464,22 @@ public final class LessonScreen {
         fixedText(left, "暂时无法继续", 30, 24, 76);
         String message = error.getMessage() == null ? "请家长检查课程或存储" : error.getMessage();
         left.addView(fit(message, 23, 18), new LinearLayout.LayoutParams(-1, 0, 1));
-        choices.addView(new LearningMascotView(context), new LinearLayout.LayoutParams(-1, -1));
+        choices.addView(new LearningMascotView(context, theme), new LinearLayout.LayoutParams(-1, -1));
         clearFooter("进度已保留"); Button retry = footerButton("重试", true, this::render, 170); retry.requestFocus();
     }
     private static final class Trail extends View {
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         final int done, total;
-        Trail(Context c, int done, int total) { super(c); this.done = done; this.total = total; setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO); }
+        final TvUiTheme theme;
+        Trail(Context c, TvUiTheme theme, int done, int total) { super(c); this.theme = theme; this.done = done; this.total = total; setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO); }
         @Override protected void onDraw(Canvas c) {
             float inset = TvUiTheme.dp(getContext(), 16), width = getWidth() - inset * 2, y = getHeight() / 2f;
-            paint.setStrokeWidth(TvUiTheme.dp(getContext(), 3)); paint.setColor(TvUiTheme.LINE);
+            paint.setStrokeWidth(TvUiTheme.dp(getContext(), 3)); paint.setColor(theme.color(LINE));
             c.drawLine(inset, y, getWidth() - inset, y, paint);
             int count = Math.min(total, 10);
             for (int n = 0; n < count; n++) {
                 float x = inset + (count == 1 ? width / 2 : n * width / (count - 1));
-                paint.setColor(n < Math.ceil(done * count / (float) total) ? TvUiTheme.TEAL : TvUiTheme.LINE);
+                paint.setColor(theme.color(n < Math.ceil(done * count / (float) total) ? ACCENT : LINE));
                 c.drawCircle(x, y, TvUiTheme.dp(getContext(), n == Math.min(done, count - 1) ? 7 : 5), paint);
             }
         }

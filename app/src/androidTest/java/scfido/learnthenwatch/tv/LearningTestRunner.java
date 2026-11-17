@@ -6,10 +6,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.BroadcastReceiver;
 import android.content.IntentFilter;
+import android.content.res.Configuration;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.view.View;
+import android.view.ViewGroup;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -61,6 +64,11 @@ public final class LearningTestRunner extends Instrumentation {
                 result.putString("stream", "PASS: " + checks + " real remote navigation assertions; isolated data cleaned.\n");
                 finish(Activity.RESULT_OK, result); return;
             }
+            if (arguments != null && "true".equals(arguments.getString("theme"))) {
+                int checks = RemoteNavigationChecks.runAppearance(this, context);
+                result.putString("stream", "PASS: " + checks + " appearance setting/navigation assertions; isolated data cleaned.\n");
+                finish(Activity.RESULT_OK, result); return;
+            }
             if (arguments != null && "true".equals(arguments.getString("ui"))) {
                 int checks = LessonLayoutChecks.run(this, context);
                 result.putString("stream", "PASS: " + checks + " TV layout/input assertions; isolated UI data cleaned.\n");
@@ -72,7 +80,8 @@ public final class LearningTestRunner extends Instrumentation {
                 finish(Activity.RESULT_OK, result); return;
             }
             if (arguments != null && "monitor".equals(arguments.getString("screen"))) {
-                int checks = PlaybackAccessServiceChecks.run(this, context, !"false".equals(arguments.getString("standby")));
+                int checks = PlaybackAccessServiceChecks.run(this, context, !"false".equals(arguments.getString("standby")),
+                        ThemeMode.fromStored(arguments.getString("theme", "auto")));
                 result.putString("stream", "PASS: " + checks + " actual monitor lifecycle/playback assertions; isolated data cleaned.\n");
                 finish(Activity.RESULT_OK, result); return;
             }
@@ -138,6 +147,20 @@ public final class LearningTestRunner extends Instrumentation {
     private void defaultsAndPin() {
         fresh(); ParentSettings s = repo.settings();
         check(s.taskCount == 5 && s.rewardMinutes == 10 && s.dailyLimitMinutes == 60 && s.dailyNewLimit == 5, "default rules");
+        check(s.themeMode == ThemeMode.AUTO, "legacy preferences default to automatic appearance");
+        s.themeMode = ThemeMode.DARK; repo.saveSettings(s);
+        repo.closeForTests();
+        repo = new LearningRepository(context, fixture(), clock, dbName, prefsName);
+        check(repo.settings().themeMode == ThemeMode.DARK, "appearance survives reopening the repository");
+        repo.restoreDefaults(); check(repo.settings().themeMode == ThemeMode.AUTO, "defaults restore automatic appearance");
+        for (int night : new int[]{Configuration.UI_MODE_NIGHT_NO, Configuration.UI_MODE_NIGHT_YES}) {
+            Configuration configuration = new Configuration(context.getResources().getConfiguration());
+            configuration.uiMode = (configuration.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | night;
+            Context configured = context.createConfigurationContext(configuration);
+            for (ThemeMode mode : ThemeMode.values())
+                check(new TvUiTheme(configured, mode).isDark() == mode.isDark(night == Configuration.UI_MODE_NIGHT_YES),
+                        "appearance resolves Android night flag " + night + " with " + mode);
+        }
         check(repo.snapshot().balanceMs == 0 && !repo.hasPin(), "new/legacy time never becomes a reward");
         Session noPin = finishRound();
         check(repo.completeAndGrant(noPin.id) == 0, "no PIN means no viewing reward");
@@ -318,7 +341,7 @@ public final class LearningTestRunner extends Instrumentation {
     }
 
     private void previewScreen(String kind) throws Exception {
-        if (!Arrays.asList("home", "lesson", "map", "progress", "parent-settings").contains(kind))
+        if (!Arrays.asList("home", "lesson", "map", "progress", "parent-settings", "pin").contains(kind))
             throw new IllegalArgumentException("Unknown screenshot screen: " + kind);
         if (PlaybackAccessService.instance != null)
             throw new IllegalStateException("Disable the debug monitor before screenshot previews");
@@ -334,6 +357,9 @@ public final class LearningTestRunner extends Instrumentation {
             LocalDate today = LocalDate.now();
             clock.date = today.minusDays(6).toString(); clock.time = System.currentTimeMillis() - 6 * 86400000L;
             repo = new LearningRepository(context, course, clock, dbName, prefsName);
+            ParentSettings appearance = repo.settings();
+            appearance.themeMode = ThemeMode.fromStored(arguments.getString("theme", "auto"));
+            repo.saveSettings(appearance);
             repo.setPin("2468");
             for (int day = 0; day < 7; day++) {
                 clock.date = today.minusDays(6 - day).toString(); clock.time += 86400000L;
@@ -360,8 +386,24 @@ public final class LearningTestRunner extends Instrumentation {
                 } catch (Exception error) { throw new IllegalStateException(error); }
             });
             waitForIdleSync();
+            final View[] shown = new View[2];
+            runOnMainSync(() -> {
+                ViewGroup container = preview.findViewById(android.R.id.content);
+                shown[0] = container.getChildAt(0);
+                if (preview.getCurrentFocus() == null) shown[0].requestFocus(View.FOCUS_DOWN);
+                shown[1] = preview.getCurrentFocus();
+            });
+            Snapshot before = repo.snapshot();
             probeStatus("PREVIEW_READY", "Isolated " + kind + " screen; demonstration records only.");
             Thread.sleep(12000);
+            final boolean[] stable = new boolean[1];
+            runOnMainSync(() -> stable[0] = !preview.isDestroyed()
+                    && ((ViewGroup) preview.findViewById(android.R.id.content)).getChildAt(0) == shown[0]
+                    && preview.getCurrentFocus() == shown[1]);
+            check(stable[0], "preview keeps its activity, content and focus during system theme changes");
+            Snapshot after = repo.snapshot();
+            check(before.totalAnswered == after.totalAnswered && before.firstCorrect == after.firstCorrect
+                    && before.balanceMs == after.balanceMs, "preview preserves learning and rewards during system theme changes");
         } finally {
             if (activity != null) { final Activity preview = activity; runOnMainSync(preview::finish); waitForIdleSync(); }
             synchronized (LearningRepository.class) { singleton.set(null, previous); }

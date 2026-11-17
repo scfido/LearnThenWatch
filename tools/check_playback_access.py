@@ -19,6 +19,7 @@ parser.add_argument("--device", required=True)
 parser.add_argument("--package", default="scfido.learnthenwatch.tv.debug", choices=["scfido.learnthenwatch.tv.debug"])
 parser.add_argument("--skip-standby", action="store_true", help="Explicitly exclude firmware standby that force-stops third-party apps")
 parser.add_argument("--screenshots-dir", type=Path, help="Save isolated expiry-gate focus screenshots for visual inspection")
+parser.add_argument("--theme", choices=("auto", "light", "dark"), default="auto")
 args = parser.parse_args()
 prefix = ["adb", "-s", args.device]
 monitor = args.package + "/scfido.learnthenwatch.tv.PlaybackAccessService"
@@ -139,7 +140,7 @@ try:
     power(True)
     set_services(":".join(services))
     time.sleep(1)
-    process = subprocess.Popen(prefix + ["shell", "am", "instrument", "-w", "-e", "screen", "monitor", "-e", "standby", "false" if args.skip_standby else "true",
+    process = subprocess.Popen(prefix + ["shell", "am", "instrument", "-w", "-e", "screen", "monitor", "-e", "standby", "false" if args.skip_standby else "true", "-e", "theme", args.theme,
                                         args.package + ".test/scfido.learnthenwatch.tv.LearningTestRunner"],
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                                encoding="utf-8", errors="replace", bufsize=1)

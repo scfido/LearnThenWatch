@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.drawable.ColorDrawable;
 import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
@@ -33,9 +34,13 @@ final class RemoteNavigationChecks {
     private RemoteNavigationChecks(Instrumentation i, Context c) { instrument = i; context = c; }
     static int run(Instrumentation i, Context c) throws Exception {
         RemoteNavigationChecks checks = new RemoteNavigationChecks(i, c);
-        try { checks.run(); return checks.assertions; } finally { checks.close(); }
+        try { checks.run(false); return checks.assertions; } finally { checks.close(); }
     }
-    private void run() throws Exception {
+    static int runAppearance(Instrumentation i, Context c) throws Exception {
+        RemoteNavigationChecks checks = new RemoteNavigationChecks(i, c);
+        try { checks.run(true); return checks.assertions; } finally { checks.close(); }
+    }
+    private void run(boolean appearanceOnly) throws Exception {
         if (PlaybackAccessService.instance != null) throw new IllegalStateException("Temporarily disable this app's service before isolated remote tests");
         context.deleteDatabase(database); context.getSharedPreferences(preferences, 0).edit().clear().commit();
         VocabularyCatalog full;
@@ -49,6 +54,12 @@ final class RemoteNavigationChecks {
         originalSingleton = singleton.get(null); singleton.set(null, repository);
         activity = (MainActivity) instrument.startActivitySync(new Intent(context, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         settle(250); checkPage("home"); checkFocus("home:learn"); noReturnButtons(); save("home");
+        if (appearanceOnly) {
+            menu("parent"); unlock(); checkAppearanceSettings();
+            key(KeyEvent.KEYCODE_BACK); checkPage("home"); save("home-dark");
+            menu("parent"); checkPage("pin"); save("pin-dark");
+            return;
+        }
 
         menu("map"); checkPage("map"); checkFocus("map:unit:0");
         key(KeyEvent.KEYCODE_DPAD_DOWN); key(KeyEvent.KEYCODE_DPAD_DOWN); key(KeyEvent.KEYCODE_DPAD_DOWN); checkFocus("map:unit:60");
@@ -120,6 +131,8 @@ final class RemoteNavigationChecks {
         checkPage("parent"); checkFocus("parent:unit"); check(repository.settings().currentUnit == 1, "unit selection returns to setting and applies chosen unit");
         key(KeyEvent.KEYCODE_DPAD_CENTER); key(KeyEvent.KEYCODE_BACK); checkPage("parent"); checkFocus("parent:unit");
 
+        checkAppearanceSettings();
+
         seek("parent:monitor", KeyEvent.KEYCODE_DPAD_DOWN); key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("monitor");
         checkFocus("monitor:system"); noReturnButtons();
         PlaybackAccessStatus monitor = PlaybackAccessService.monitorStatus(context, repository);
@@ -164,6 +177,25 @@ final class RemoteNavigationChecks {
         key(KeyEvent.KEYCODE_BACK); checkPage("pin"); // The actual parent destination is protected after backgrounding.
         key(KeyEvent.KEYCODE_BACK); checkPage("home");
         key(KeyEvent.KEYCODE_BACK); check(activity.isFinishing(), "back from the root exits without a navigation loop");
+    }
+    private void checkAppearanceSettings() {
+        seek("parent:theme", KeyEvent.KEYCODE_DPAD_DOWN);
+        Snapshot before = repository.snapshot();
+        for (ThemeMode mode : new ThemeMode[]{ThemeMode.LIGHT, ThemeMode.DARK, ThemeMode.AUTO}) {
+            key(KeyEvent.KEYCODE_DPAD_CENTER); checkPage("parent"); checkFocus("parent:theme");
+            check(repository.settings().themeMode == mode, "remote confirmation saves appearance " + mode);
+            main(() -> {
+                View root = (View) field(activity, "pageRoot");
+                check(((ColorDrawable) root.getBackground()).getColor() == new TvUiTheme(activity, mode).color(TvUiTheme.Role.BACKGROUND),
+                        "remote setting applies the selected palette immediately");
+            });
+            if (mode == ThemeMode.DARK) save("parent-dark");
+        }
+        key(KeyEvent.KEYCODE_DPAD_CENTER); key(KeyEvent.KEYCODE_DPAD_CENTER);
+        check(repository.settings().themeMode == ThemeMode.DARK, "remaining navigation exercises dark appearance");
+        Snapshot after = repository.snapshot();
+        check(before.balanceMs == after.balanceMs && before.totalAnswered == after.totalAnswered,
+                "appearance settings preserve the viewing balance and learning records");
     }
     private void seedLearning() {
         Session session = repository.ensureSession(); Task task; int guard = 0;

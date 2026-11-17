@@ -76,6 +76,7 @@ public final class LearningRepository {
         s.currentUnit = prefs.getInt("currentUnit", 0); s.volume = prefs.getInt("volume", 80);
         s.stage = prefs.getString("stage", "KET"); s.autoSpeak = prefs.getBoolean("autoSpeak", true);
         s.chineseHints = prefs.getBoolean("chineseHints", true); s.enabled = prefs.getBoolean("enabled", true);
+        s.themeMode = ThemeMode.fromStored(prefs.getString("themeMode", "auto"));
         return s;
     }
 
@@ -85,7 +86,7 @@ public final class LearningRepository {
                 .putInt("dailyLimitMinutes", s.dailyLimitMinutes).putInt("dailyNewLimit", s.dailyNewLimit)
                 .putInt("currentUnit", s.currentUnit).putInt("volume", s.volume).putString("stage", s.stage)
                 .putBoolean("autoSpeak", s.autoSpeak).putBoolean("chineseHints", s.chineseHints)
-                .putBoolean("enabled", s.enabled).commit();
+                .putBoolean("enabled", s.enabled).putString("themeMode", s.themeMode.storedValue).commit();
         if (!saved) throw new IllegalStateException("配置保存失败");
         snapshot(); // A lower daily limit clips the wallet immediately.
     }

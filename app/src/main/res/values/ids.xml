@@ -1,0 +1,6 @@
+<resources>
+    <item name="theme_text_color" type="id" />
+    <item name="theme_background" type="id" />
+    <item name="theme_correct_answer" type="id" />
+    <item name="theme_window_dark" type="id" />
+</resources>

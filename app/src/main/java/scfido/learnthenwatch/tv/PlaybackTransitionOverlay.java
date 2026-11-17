@@ -11,12 +11,13 @@ import android.widget.FrameLayout;
 final class PlaybackTransitionOverlay {
     static final long WARNING_MS = 30000;
     private final Context context;
+    private final TvUiTheme theme;
     private final WindowManager windows;
     private FrameLayout warning;
     private View bar;
 
-    PlaybackTransitionOverlay(Context context) {
-        this.context = context;
+    PlaybackTransitionOverlay(Context context, TvUiTheme theme) {
+        this.context = context; this.theme = theme;
         windows = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
     }
 
@@ -29,9 +30,9 @@ final class PlaybackTransitionOverlay {
         if (warning == null) {
             warning = new FrameLayout(context);
             warning.setTag("watch:countdown");
-            warning.setBackgroundColor(0x5535484E);
+            theme.backgroundColor(warning, TvUiTheme.Role.WARNING_TRACK);
             warning.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-            bar = new View(context); bar.setBackgroundColor(TvUiTheme.TEAL); bar.setPivotX(0);
+            bar = new View(context); theme.backgroundColor(bar, TvUiTheme.Role.ACCENT); bar.setPivotX(0);
             bar.setScaleX(fraction);
             warning.addView(bar, new FrameLayout.LayoutParams(-1, -1));
             try { windows.addView(warning, params(TvUiTheme.dp(context, 4))); }
@@ -47,6 +48,8 @@ final class PlaybackTransitionOverlay {
         if (playing) bar.animate().scaleX(Math.min(displayed, Math.max(0, remaining - 1000) / (float) WARNING_MS))
                 .setInterpolator(new android.view.animation.LinearInterpolator()).setDuration(1000).start();
     }
+
+    void refreshTheme(ThemeMode mode) { theme.refresh(mode, warning); }
 
     private WindowManager.LayoutParams params(int height) {
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(-1, height,

@@ -2,6 +2,7 @@ package scfido.learnthenwatch.tv;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.view.View;
@@ -28,6 +29,11 @@ public final class LearningGateActivity extends Activity {
         owner = PlaybackAccessService.instance;
         if (owner == null || !owner.attachGateActivity(this, getIntent().getLongExtra("gateWindow", -1)))
             finish();
+    }
+
+    @Override public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        if (owner != null) owner.appearanceChanged();
     }
 
     void showGate(View gate) {

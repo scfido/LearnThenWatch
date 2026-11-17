@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.drawable.InsetDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.os.SystemClock;
 import android.text.Layout;
 import android.view.KeyEvent;
@@ -70,6 +71,8 @@ final class LessonLayoutChecks {
         checkPreparation();
         attach(create(false, null), 960, 540);
         check(repository.currentTask(repository.currentSession().id).needsIntro == false, "no separate new-word confirmation page");
+        checkAppearance(ThemeMode.DARK); validate(); save("question-dark");
+        checkAppearance(ThemeMode.LIGHT);
         validate(); save("question");
         check(((Button) find("study:replay")).getText().toString().equals("← 重听"), "replay shortcut has a left arrow");
         check(((Button) find("study:unknown")).getText().toString().equals("不认识 →"), "unknown shortcut has a right arrow");
@@ -83,6 +86,7 @@ final class LessonLayoutChecks {
         settle(230);
         check(repository.snapshot().totalAnswered == 1 && repository.snapshot().firstCorrect == 0, "unknown is recorded honestly");
         check(find("study:advance") != null, "incorrect answer has one acknowledgement"); validate(); save("explanation");
+        checkAppearance(ThemeMode.DARK); save("explanation-dark"); checkAppearance(ThemeMode.LIGHT);
         click("study:advance"); settle(250);
         // Deliberately missing audio must offer a same-item text fallback, never silently complete it.
         await(() -> find("study:unknown") instanceof Button
@@ -95,6 +99,7 @@ final class LessonLayoutChecks {
         click("study:option:" + second.correct);
         check(audioGeneration() > spoken + 1, "correct choice replays pronunciation before advancing");
         check(find("study:advance") == null, "correct answers do not require a continue button");
+        checkAppearance(ThemeMode.DARK); checkAppearance(ThemeMode.LIGHT);
         settle(300);
         check(find("study:option:" + second.correct) != null, "answer feedback briefly remains before automatic next");
         settle(850);
@@ -126,6 +131,7 @@ final class LessonLayoutChecks {
         check(repository.snapshot().balanceMs == 600000, "single acknowledgement completes guidance and awards once");
         check(repository.snapshot().totalAnswered == 3 && repository.snapshot().firstCorrect == 2, "UI preserves first-attempt stats");
         check(find("study:finish") != null, "completion has one explicit viewing action"); validate(); save("complete");
+        checkAppearance(ThemeMode.DARK); save("complete-dark"); checkAppearance(ThemeMode.LIGHT);
         check("已完成 3 / 3".contentEquals(find("study:progress").getContentDescription()), "completion progress follows configured task count");
         check(find("study:home") != null, "completion offers learning home independently of viewing");
         main(() -> {
@@ -166,6 +172,7 @@ final class LessonLayoutChecks {
                     "旅游信息中心提供地图，并为每一位年轻的游客提供有用的建议。", longest.audio) };
         for (int height : new int[]{540, 480}) for (VocabularyCatalog.Item item : extremes) {
             attach(create(false, item), height == 540 ? 960 : 853, height);
+            checkAppearance(ThemeMode.DARK);
             validate(); if (height == 480) save("compact-wordcard");
         }
         // Demos must follow the same single-screen layout without changing the wallet or progress.
@@ -193,6 +200,7 @@ final class LessonLayoutChecks {
         check(repository.snapshot().totalAnswered == 0 && audioGeneration() == spoken,
                 "preparation blocks shortcuts, clicks and automatic pronunciation");
         main(() -> check(!first.isEnabled(), "preparation lasts beyond one second"));
+        checkAppearance(ThemeMode.DARK);
         settle(1100);
         main(() -> check(first == find("study:option:0") && first.isEnabled() && first.hasFocus(),
                 "preparation enables and focuses the existing first answer without redrawing"));
@@ -207,18 +215,48 @@ final class LessonLayoutChecks {
                 () -> returnedHome++, false, null, true));
         attach(pending[0], 960, 540);
         main(() -> { screen.beginPreparation(); screen.close(); });
-        spoken = audioGeneration(); settle(2200);
-        check(audioGeneration() == spoken && repository.snapshot().totalAnswered == 0,
-                "closed preparation cancels pending audio and leaves answers unchanged");
+        settle(2200);
+        main(() -> {
+            check(screen.isPreparing() && !find("study:option:0").isEnabled(),
+                    "closed preparation never enables answers after its deadline");
+            try {
+                java.lang.reflect.Field audio = LessonScreen.class.getDeclaredField("audio"); audio.setAccessible(true);
+                java.lang.reflect.Field player = PronunciationPlayer.class.getDeclaredField("player"); player.setAccessible(true);
+                check(player.get(audio.get(screen)) == null, "closed preparation releases the audio player");
+            } catch (ReflectiveOperationException error) { throw new IllegalStateException(error); }
+        });
+        check(repository.snapshot().totalAnswered == 0, "closed preparation leaves answers unchanged");
         settings.autoSpeak = false; repository.saveSettings(settings);
     }
     private long audioGeneration() throws Exception {
-        java.lang.reflect.Field player = LessonScreen.class.getDeclaredField("audio"); player.setAccessible(true);
-        java.lang.reflect.Field token = PronunciationPlayer.class.getDeclaredField("generation"); token.setAccessible(true);
         final long[] result = new long[1];
-        main(() -> { try { result[0] = token.getLong(player.get(screen)); }
-            catch (IllegalAccessException e) { throw new IllegalStateException(e); } });
+        main(() -> result[0] = audioGenerationOnMain());
         return result[0];
+    }
+    private long audioGenerationOnMain() {
+        try {
+            java.lang.reflect.Field player = LessonScreen.class.getDeclaredField("audio"); player.setAccessible(true);
+            java.lang.reflect.Field token = PronunciationPlayer.class.getDeclaredField("generation"); token.setAccessible(true);
+            return token.getLong(player.get(screen));
+        } catch (ReflectiveOperationException error) { throw new IllegalStateException(error); }
+    }
+    private void checkAppearance(ThemeMode mode) {
+        main(() -> {
+            View root = screen.view(), page = ((ViewGroup) root).getChildAt(0), focus = root.findFocus();
+            long spoken = audioGenerationOnMain(); boolean preparing = screen.isPreparing();
+            Snapshot before = repository.snapshot();
+            ParentSettings settings = repository.settings(); settings.themeMode = mode; repository.saveSettings(settings);
+            screen.refreshTheme();
+            check(screen.view() == root && ((ViewGroup) root).getChildAt(0) == page && root.findFocus() == focus,
+                    "appearance keeps the laid-out lesson and remote focus");
+            check(audioGenerationOnMain() == spoken && screen.isPreparing() == preparing,
+                    "appearance keeps audio generation and preparation state");
+            int background = ((ColorDrawable) root.getBackground()).getColor();
+            check(background == (mode == ThemeMode.DARK ? 0xFF101D1F : 0xFFFFF9EE), "lesson uses selected appearance");
+            Snapshot after = repository.snapshot();
+            check(before.balanceMs == after.balanceMs && before.totalAnswered == after.totalAnswered
+                    && before.firstCorrect == after.firstCorrect, "appearance preserves rewards and answer records");
+        });
     }
     private void checkVolumeFeedback() {
         android.media.AudioManager manager = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);

@@ -60,6 +60,8 @@ python tools/check_monitor_recovery.py --device <DEVICE> --reboot --standby
 
 截图工具生成五张画面至 `docs/screenshots`，使用演示记录，结束后删除演示数据。监控检查会实际播放、暂停和切换 Home，应在[已验证的兼容环境](VALIDATION.md)运行；页面变化可能影响自动选片。当前小米固件待机会强停进程，使用 `--skip-standby`；普通待机恢复只在确认支持的固件上验收。
 
+主题修改需运行 `ui` 与 `remote` 检查，覆盖准备期间、答题反馈和完成页切换配色后的焦点、发音与记录；`run_device_checks.py --device <DEVICE> --suite theme` 可单独检查主题设置的遥控器操作。分别使用 `capture_screenshots.py --device <DEVICE> --theme light` 和 `--theme dark` 查看两种配色，可用 `--output-dir build/theme-checks/light` 等参数指定截图目录。自动模式还需在前台切换电视系统主题，检查 PIN 输入和当前学习视图的连续性；使用 `check_playback_access.py --device <DEVICE> --skip-standby --theme dark` 验证深色自动学习页。
+
 ## 观看到期过渡回归
 
 修改观看过渡后，除基线构建和课程校验外，在明确指定的电视上串行运行 `run_device_checks.py --suite ui` 和 `check_playback_access.py --skip-standby`（均需指定 `--device <DEVICE>`）。UI 检查覆盖显示真实题目后的两秒内禁止作答与自动发音、关闭页面后取消准备回调，以及完成页双按钮、焦点连接和额度再次校验；播放检查覆盖到期后没有独立等待页、准备期间不提交答案和不扣观看时间。

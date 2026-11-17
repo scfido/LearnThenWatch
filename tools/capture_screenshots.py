@@ -11,14 +11,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", required=True)
     screens = ("home", "lesson", "map", "progress", "parent-settings")
-    parser.add_argument("--screens", nargs="+", choices=screens, default=screens)
+    parser.add_argument("--screens", nargs="+", choices=(*screens, "pin"), default=screens)
+    parser.add_argument("--theme", choices=("auto", "light", "dark"), default="auto")
+    parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
-    destination = Path(__file__).resolve().parents[1] / "docs/screenshots"
+    destination = args.output_dir or Path(__file__).resolve().parents[1] / "docs/screenshots"
     destination.mkdir(parents=True, exist_ok=True)
     with isolated_services(args.device):
         for screen in args.screens:
             process = subprocess.Popen(["adb", "-s", args.device, "shell", "am", "instrument", "-w",
-                                        "-e", "screen", screen, RUNNER], stdout=subprocess.PIPE,
+                                        "-e", "screen", screen, "-e", "theme", args.theme, RUNNER], stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
             timer = threading.Timer(60, process.kill)
             timer.start()
