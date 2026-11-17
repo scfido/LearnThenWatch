@@ -1,0 +1,42 @@
+<resources>
+    <!-- Explicit palettes allow manual light/dark selection independently of system night mode. -->
+    <color name="theme_light_background">#FFF9EE</color>
+    <color name="theme_light_surface">#FFFFFF</color>
+    <color name="theme_light_text">#1F3A3E</color>
+    <color name="theme_light_muted">#5C7070</color>
+    <color name="theme_light_accent">#158477</color>
+    <color name="theme_light_accent_surface">#DEF4E7</color>
+    <color name="theme_light_primary">@color/theme_light_accent</color>
+    <color name="theme_light_on_primary">@color/theme_light_surface</color>
+    <color name="theme_light_gold">#F9CD5E</color>
+    <color name="theme_light_line">#D1DFD6</color>
+    <color name="theme_light_error">#A4412D</color>
+    <color name="theme_light_warning_track">#5535484E</color>
+
+    <color name="theme_dark_background">#121614</color>
+    <color name="theme_dark_surface">#202723</color>
+    <color name="theme_dark_text">#F0F5F1</color>
+    <color name="theme_dark_muted">#A4B2A8</color>
+    <color name="theme_dark_accent">#85D69C</color>
+    <color name="theme_dark_accent_surface">#233E2D</color>
+    <color name="theme_dark_primary">#286641</color>
+    <color name="theme_dark_on_primary">@color/theme_dark_text</color>
+    <color name="theme_dark_gold">@color/theme_light_gold</color>
+    <color name="theme_dark_line">#35423A</color>
+    <color name="theme_dark_error">#FFB4A2</color>
+    <color name="theme_dark_warning_track">#8856665B</color>
+
+    <!-- Fixed artwork colours: independent of interface palette changes. -->
+    <color name="mascot_body">#158477</color>
+    <color name="mascot_eyes">#FFFFFF</color>
+    <color name="mascot_pupils">#1F3A3E</color>
+    <color name="mascot_gold">#F9CD5E</color>
+    <color name="mascot_cheeks">#F3AC91</color>
+    <color name="mascot_shadow">#18158477</color>
+    <color name="mascot_confetti_blue">#8BBFE6</color>
+
+    <color name="launcher_teal">#167D8D</color>
+    <color name="launcher_cream">#FFF8E9</color>
+    <color name="launcher_gold">#F3C75B</color>
+    <color name="launcher_landscape">#DCEEE6</color>
+</resources>

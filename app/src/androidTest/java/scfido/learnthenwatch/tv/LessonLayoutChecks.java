@@ -252,7 +252,17 @@ final class LessonLayoutChecks {
             check(audioGenerationOnMain() == spoken && screen.isPreparing() == preparing,
                     "appearance keeps audio generation and preparation state");
             int background = ((ColorDrawable) root.getBackground()).getColor();
-            check(background == (mode == ThemeMode.DARK ? 0xFF101D1F : 0xFFFFF9EE), "lesson uses selected appearance");
+            check(background == context.getColor(mode == ThemeMode.DARK
+                    ? R.color.theme_dark_background : R.color.theme_light_background), "lesson uses selected appearance");
+            android.content.res.TypedArray windowColors = context.obtainStyledAttributes(
+                    mode == ThemeMode.DARK ? R.style.AppThemeDark : R.style.AppThemeLight,
+                    new int[]{android.R.attr.windowBackground, android.R.attr.colorAccent});
+            try {
+                check(windowColors.getColor(0, 0) == background, "window and lesson share background resource");
+                check(windowColors.getColor(1, 0) == context.getColor(mode == ThemeMode.DARK
+                        ? R.color.theme_dark_accent : R.color.theme_light_accent),
+                        "window uses selected accent resource");
+            } finally { windowColors.recycle(); }
             Snapshot after = repository.snapshot();
             check(before.balanceMs == after.balanceMs && before.totalAnswered == after.totalAnswered
                     && before.firstCorrect == after.firstCorrect, "appearance preserves rewards and answer records");

@@ -19,37 +19,45 @@ import android.widget.TextView;
 /** Shared TV dimensions, colours and visible remote-control focus. */
 public final class TvUiTheme {
     public enum Role {
-        BACKGROUND(0xFFFFF9EE, 0xFF101D1F),
-        SURFACE(0xFFFFFFFF, 0xFF1B2D2F),
-        TEXT(0xFF1F3A3E, 0xFFEDF5EF),
-        MUTED(0xFF5C7070, 0xFFAFBFBA),
-        ACCENT(0xFF158477, 0xFF75D8C2),
-        ACCENT_SURFACE(0xFFDEF4E7, 0xFF24483F),
-        PRIMARY(0xFF158477, 0xFF1D7568),
-        ON_PRIMARY(0xFFFFFFFF, 0xFFF6FFF9),
-        GOLD(0xFFF9CD5E, 0xFFF9CD5E),
-        LINE(0xFFD1DFD6, 0xFF54756F),
-        ERROR(0xFFA4412D, 0xFFFFB4A2),
-        WARNING_TRACK(0x5535484E, 0x88617470);
+        BACKGROUND(R.color.theme_light_background, R.color.theme_dark_background),
+        SURFACE(R.color.theme_light_surface, R.color.theme_dark_surface),
+        TEXT(R.color.theme_light_text, R.color.theme_dark_text),
+        MUTED(R.color.theme_light_muted, R.color.theme_dark_muted),
+        ACCENT(R.color.theme_light_accent, R.color.theme_dark_accent),
+        ACCENT_SURFACE(R.color.theme_light_accent_surface, R.color.theme_dark_accent_surface),
+        PRIMARY(R.color.theme_light_primary, R.color.theme_dark_primary),
+        ON_PRIMARY(R.color.theme_light_on_primary, R.color.theme_dark_on_primary),
+        GOLD(R.color.theme_light_gold, R.color.theme_dark_gold),
+        LINE(R.color.theme_light_line, R.color.theme_dark_line),
+        ERROR(R.color.theme_light_error, R.color.theme_dark_error),
+        WARNING_TRACK(R.color.theme_light_warning_track, R.color.theme_dark_warning_track);
 
-        private final int light, dark;
-        Role(int light, int dark) { this.light = light; this.dark = dark; }
+        private final int lightResource, darkResource;
+        Role(int lightResource, int darkResource) {
+            this.lightResource = lightResource; this.darkResource = darkResource;
+        }
     }
 
     /** Immutable palette shared by all style bindings in one refresh. */
     private static final class Palette {
         public final boolean dark;
-        private Palette(boolean dark) { this.dark = dark; }
-        public int color(Role role) { return dark ? role.dark : role.light; }
+        private final int[] values = new int[Role.values().length];
+        private Palette(Context context, boolean dark) {
+            this.dark = dark;
+            for (Role role : Role.values())
+                values[role.ordinal()] = context.getColor(dark ? role.darkResource : role.lightResource);
+        }
+        public int color(Role role) { return values[role.ordinal()]; }
     }
 
     private interface BackgroundStyle { void apply(Palette colors); }
-    private static final Palette LIGHT = new Palette(false), DARK = new Palette(true);
+    private final Palette light, dark;
     private final Context context;
     private Palette colors;
 
     public TvUiTheme(Context context, ThemeMode mode) {
         this.context = context;
+        light = new Palette(context, false); dark = new Palette(context, true);
         refresh(mode, null);
     }
     public int color(Role role) { return colors.color(role); }
@@ -59,7 +67,7 @@ public final class TvUiTheme {
     public void refresh(ThemeMode mode, View root) {
         boolean systemDark = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        colors = mode.isDark(systemDark) ? DARK : LIGHT;
+        colors = mode.isDark(systemDark) ? dark : light;
         if (root != null) applyTree(root);
     }
     private void applyTree(View view) {
